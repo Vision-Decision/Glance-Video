@@ -1,0 +1,15 @@
+{
+ "n": 152,
+ "pred_ev": {
+  "MAE": 0.35360098863502004,
+  "OBO": 0.3684210526315789
+ },
+ "pred_argmax": {
+  "MAE": 0.1919740974099462,
+  "OBO": 0.6381578947368421
+ },
+ "cmd": "repcount",
+ "ckpt": "/content/out/gv0/ckpt_final.pt",
+ "base": false,
+ "which": null
+}

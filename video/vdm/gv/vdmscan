@@ -1,0 +1,325 @@
+#!/usr/bin/env python3
+"""vdmscan: ask perception questions about a whole video in one scan (Glance-Video scan server, video/vdm/gv/scan_server.py).
+
+The video (or the --in range) is cut into 2-s clips (4 frames at 2 fps, a new clip every second; long spans use a lower
+frame rate, at most VDMSCAN_MAX_CLIPS clips) and encoded ONCE on the GPU server; every later question over the same
+video/range costs one forward (well under a second).
+  vdmscan find  video.mp4 "a person opens the fridge"   -> top-k candidate clips (diverse in time) with calibrated
+                                                           probabilities, a PRESENT / NOT DETECTED verdict, and ONE
+                                                           contact sheet of those clips in time order (joint re-read)
+  vdmscan ever  video.mp4 "a person opens the fridge"   -> did it happen at all? (calibrated: P(false YES) <= alpha)
+  vdmscan when  video.mp4 "a person opens the fridge"   -> time intervals where it happens, with probabilities
+  vdmscan count video.mp4 "the person picks up a spoon" -> number of separate occurrences (runs of detected clips) + times
+  vdmscan curve video.mp4 "..."                          -> P(t) (compact: peaks + a coarse profile)
+  vdmscan reps  video.mp4 "jumping jacks" --in 30-60     -> repetitions of a fast periodic action inside a short range
+  vdmscan warm  video.mp4                                -> (harness) extract + encode the whole video ahead of time
+Options: --in t0-t1 (seconds; sub-range), --k 6, --alpha 0.1, --q 0.1, --json (full JSON output).
+
+Frames are cached by video content (size + head/tail hash), not by path, in VDMSCAN_CACHE (default /cache/vdmscan when
+it is writable, else /work/scratch/vdmscan_cache), so a harness can pre-extract them once per video for all runs.
+"""
+import argparse, base64, hashlib, io, json, os, subprocess, sys, time, urllib.request
+
+import numpy as np
+from PIL import Image, ImageDraw
+
+URL = os.environ.get("VDMSCAN_URL", "http://vi-gateway:8080/vdm").rstrip("/")
+FPS, K, STRIDE, SHORT = 2.0, 4, 2, 448          # 2 fps, 4 frames per clip, new clip every 2 frames (1 s)
+MAX_CLIPS = int(os.environ.get("VDMSCAN_MAX_CLIPS", "600"))
+REPS_FPS, REPS_SHORT, REPS_MAX_S = 8.0, 256, 180.0
+OWNER = os.environ.get("VDMSCAN_OWNER", "")
+LOG = os.environ.get("VDMSCAN_LOG", "/work/scratch/vdmscan_calls.jsonl")
+SHEET_DIR = os.environ.get("VDMSCAN_SHEETS", "scratch")
+
+
+def _cache_dir():
+    for d in (os.environ.get("VDMSCAN_CACHE"), "/work/scratch/vdmscan_cache"):
+        if d:
+            try:
+                os.makedirs(d, exist_ok=True)
+                if os.access(d, os.W_OK):
+                    return d
+            except OSError:
+                pass
+    return "/tmp/vdmscan_cache"
+
+
+def die(msg):
+    print(json.dumps({"error": msg})); print(f"# error: {msg}"); sys.exit(1)
+
+
+def post(path, body, timeout=1200):
+    req = urllib.request.Request(URL + path, json.dumps(body).encode(), {"content-type": "application/json"})
+    for attempt in range(5):
+        try:
+            r = json.load(urllib.request.urlopen(req, timeout=timeout))
+            break
+        except urllib.error.HTTPError as e:
+            try:
+                r = json.load(e)
+            except Exception:
+                r = {"error": f"HTTP {e.code}", "retryable": e.code >= 500}
+            if r.get("retryable") and attempt < 4:
+                time.sleep(5 * (attempt + 1)); continue
+            break
+        except Exception as e:
+            if attempt < 4:
+                time.sleep(5 * (attempt + 1)); continue
+            die(f"vdmscan server unreachable: {e}")
+    if "error" in r:
+        raise RuntimeError(r["error"])
+    return r
+
+
+def probe(path):
+    o = json.loads(subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                                   "stream=width,height:format=duration", "-of", "json", path], capture_output=True, text=True).stdout)
+    return float(o["format"]["duration"]), int(o["streams"][0]["width"]), int(o["streams"][0]["height"])
+
+
+def video_id(path):
+    """content id: size + sha1 of the first and last MiB (independent of the mount path and mtime)."""
+    st = os.stat(path)
+    h = hashlib.sha1(str(st.st_size).encode())
+    with open(path, "rb") as f:
+        h.update(f.read(1 << 20))
+        f.seek(max(0, st.st_size - (1 << 20)))
+        h.update(f.read(1 << 20))
+    return h.hexdigest()[:20]
+
+
+def decode(path, t0, t1, fps, short=None, size=None):
+    """RGB frames at `fps` over [t0, t1] (accurate decode; -ss before -i is a fast keyframe seek + exact trim)."""
+    _, W, H = probe(path)
+    if size:
+        w, h = size
+    else:
+        w, h = (short, int(round(H * short / W / 2)) * 2) if W <= H else (int(round(W * short / H / 2)) * 2, short)
+    cmd = ["ffmpeg", "-v", "error", "-ss", f"{t0}", "-t", f"{t1 - t0}", "-i", path, "-an", "-sn", "-vf",
+           f"fps={fps},scale={w}:{h}", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+    raw = subprocess.run(cmd, capture_output=True).stdout
+    n = len(raw) // (w * h * 3)
+    return np.frombuffer(raw[: n * w * h * 3], np.uint8).reshape(n, h, w, 3)
+
+
+def jpeg_b64(arr, q=85):
+    b = io.BytesIO(); Image.fromarray(arr).save(b, "JPEG", quality=q); return base64.b64encode(b.getvalue()).decode()
+
+
+def span(path, rng):
+    dur = probe(path)[0]
+    if not rng:
+        return 0.0, dur, dur
+    a, b = rng.replace(" ", "").split("-", 1)
+    t0, t1 = max(0.0, float(a)), min(dur, float(b))
+    if t1 - t0 < 2.0:
+        die(f"--in range too short (video is {dur:.0f} s long)")
+    return t0, t1, dur
+
+
+def frames_cached(path, key, t0, t1, fps, short):
+    ro = os.environ.get("VDMSCAN_CACHE_RO")       # harness-provided, read-only (pre-extracted whole-video frames)
+    if ro and os.path.exists(os.path.join(ro, key + ".json")):
+        try:
+            return json.load(open(os.path.join(ro, key + ".json")))
+        except Exception:
+            pass
+    d = _cache_dir()
+    fp = os.path.join(d, key + ".json")
+    if os.path.exists(fp):
+        try:
+            return json.load(open(fp))
+        except Exception:
+            pass
+    enc = [jpeg_b64(a) for a in decode(path, t0, t1, fps, short)]
+    try:
+        tmp = f"{fp}.{os.getpid()}.tmp"
+        json.dump(enc, open(tmp, "w")); os.replace(tmp, fp)
+    except OSError:
+        pass
+    return enc
+
+
+def geometry(path, t0, t1):
+    fps = FPS if (t1 - t0) <= MAX_CLIPS else FPS * MAX_CLIPS / (t1 - t0)
+    key = hashlib.sha1(f"v2|{video_id(path)}|{t0:.2f}-{t1:.2f}|{fps:.4f}".encode()).hexdigest()
+    return fps, key
+
+
+def ensure_bank(path, key, t0, t1, fps, rec, extract_only=False):
+    """frames from cache (or decode), then POST /encode (no-op if the server already holds the bank)."""
+    te = time.time()
+    fr = frames_cached(path, key, t0, t1, fps, SHORT)
+    rec["extract_sec"] = round(time.time() - te, 2)
+    if extract_only:
+        return len(fr)
+    n = len(fr)
+    starts = list(range(0, max(1, n - K + 1), STRIDE))
+    times = [[round(t0 + s / fps, 2), round(t0 + (s + K - 1) / fps, 2)] for s in starts]
+    r = post("/encode", dict(video=key, frames=fr, K=K, stride=STRIDE, times=times, dt=1.0 / fps, owner=OWNER))
+    return r.get("n")
+
+
+def scan(path, key, t0, t1, fps, body, rec):
+    try:
+        return post("/scan", body)
+    except RuntimeError as e:
+        if "unknown video" not in str(e):
+            die(str(e))
+    try:
+        ensure_bank(path, key, t0, t1, fps, rec)
+        rec["encoded"] = True
+        return post("/scan", body)
+    except RuntimeError as e:
+        die(str(e))
+
+
+def topk_diverse(times, p, pval, k, span_s, clip_s):
+    """greedy top-k by probability with temporal non-maximum suppression (candidates at least `sep` apart)."""
+    sep = max(2.0 * clip_s, span_s / 100.0)
+    centers = [(a + b) / 2 for a, b in times]
+    picked = []
+    for i in np.argsort(-np.asarray(p), kind="stable"):
+        if all(abs(centers[i] - centers[j]) >= sep for j in picked):
+            picked.append(int(i))
+        if len(picked) == k:
+            break
+    return picked
+
+
+def contact_sheet(path, clips, out, labels, cell_w=320):
+    """one image: one row per clip in time order, 4 frames spread over the clip, label above each row."""
+    _, W, H = probe(path)
+    cw = cell_w; ch = int(round(H * cw / W / 2)) * 2
+    lab_h = 18
+    sheet = Image.new("RGB", (4 * cw, len(clips) * (ch + lab_h)), (0, 0, 0))
+    dr = ImageDraw.Draw(sheet)
+    for r, ((a, b), lab) in enumerate(zip(clips, labels)):
+        dur = max(b - a, 0.5)
+        fr = decode(path, a, a + dur + 0.05, 4.0 / dur, size=(cw, ch))[:4]
+        y = r * (ch + lab_h)
+        dr.text((4, y + 3), lab, fill=(255, 255, 0))
+        for c, f in enumerate(fr):
+            sheet.paste(Image.fromarray(f), (c * cw, y + lab_h))
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    sheet.save(out, "JPEG", quality=88)
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="vdmscan", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("op", choices=["find", "ever", "when", "count", "curve", "reps", "warm"])
+    ap.add_argument("video"); ap.add_argument("query", nargs="?", default="")
+    ap.add_argument("--in", dest="inn"); ap.add_argument("--alpha", type=float, default=0.1); ap.add_argument("--q", type=float, default=0.1)
+    ap.add_argument("--k", type=int, default=6, help="find: number of candidate clips (1-8)")
+    ap.add_argument("--extract-only", action="store_true", help="warm: only fill the frame cache")
+    ap.add_argument("--json", action="store_true", help="print the full server JSON")
+    a = ap.parse_args()
+    if not os.path.exists(a.video):
+        die(f"no such file: {a.video}")
+    if a.op != "warm" and not a.query.strip():
+        die("missing query phrase")
+    t_start = time.time()
+    t0, t1, dur = span(a.video, a.inn)
+    rec = dict(op=a.op, query=a.query, inn=a.inn, ts=t_start)
+    if a.op == "reps":
+        if t1 - t0 > REPS_MAX_S:
+            die(f"reps needs a short range: use --in t0-t1 with at most {REPS_MAX_S:.0f} s (find it first with `vdmscan find`)")
+        key = hashlib.sha1(f"reps2|{video_id(a.video)}|{t0:.2f}-{t1:.2f}".encode()).hexdigest()
+        fr = frames_cached(a.video, key, t0, t1, REPS_FPS, REPS_SHORT)
+        r = post("/reps", dict(frames=fr, fps=REPS_FPS, action=a.query, t0=t0))
+        rec.update(sec_total=round(time.time() - t_start, 2), server_sec=r.get("sec"))
+        _log(rec)
+        if a.json:
+            print(json.dumps(r))
+        busy = [w for w in r["windows"] if w["expected"] >= 0.5]
+        print(f"# reps: {r['count_argmax']} repetitions of '{a.query}' in {t0:.0f}-{t1:.0f}s ("
+              f"{len(r['windows'])} windows of 4 s; active: " + (", ".join(f"{w['t0']:.0f}s:{w['expected']:.1f}" for w in busy[:30]) or "none") + ")")
+        return
+    fps, key = geometry(a.video, t0, t1)
+    if a.op == "warm":
+        n = ensure_bank(a.video, key, t0, t1, fps, rec, extract_only=a.extract_only)
+        rec.update(sec_total=round(time.time() - t_start, 2), n=n)
+        print(json.dumps(rec))
+        return
+    ops = {"find": ["ever", "scores"], "ever": ["ever"], "when": ["ever", "when", "scores"],
+           "count": ["ever", "count"], "curve": ["curve", "ever"]}[a.op]
+    body = dict(video=key, query=a.query, ops=ops, alpha=a.alpha, q=a.q)
+    r = scan(a.video, key, t0, t1, fps, body, rec)
+    rec.update(encoded=rec.get("encoded", False), n_clips=r.get("n_clips"), server_sec=r.get("sec"))
+    r.update(cmd=a.op, query=a.query)
+    ev = r.get("ever", {})
+    clip_s = (K - 1) / fps + 1 / fps
+    head = f"[{r.get('n_clips')} clips of {clip_s:.1f} s over {t0:.0f}-{t1:.0f}s]"
+    if a.json:
+        print(json.dumps(r))
+    if a.op == "find":
+        sc = r["scores"]
+        k = max(1, min(8, a.k))
+        idx = topk_diverse(sc["times"], sc["p"], sc["pval"], k, t1 - t0, clip_s)
+        verdict = ("PRESENT (calibrated: on videos without the event a false PRESENT happens <= "
+                   f"{a.alpha:.0%} of the time)") if ev.get("ever") else \
+            "NOT DETECTED (no clip clears the calibrated threshold; brief/small events can be missed, so treat the candidates as weak leads)"
+        order = sorted(idx, key=lambda i: sc["times"][i][0])
+        rank = {i: n + 1 for n, i in enumerate(idx)}
+        tag = hashlib.sha1(f"{key}|{a.query}|{k}".encode()).hexdigest()[:8]
+        out = os.path.join(SHEET_DIR, f"vdmscan_find_{tag}.jpg")
+        ts = time.time()
+        try:
+            contact_sheet(a.video, [sc["times"][i] for i in order], out,
+                          [f"#{rank[i]}  {sc['times'][i][0]:.0f}-{sc['times'][i][1]:.0f}s  p={sc['p'][i]:.2f}" for i in order])
+            sheet_msg = (f"# sheet: {out} - the {len(order)} candidates in TIME ORDER, one row each (4 frames across the clip, "
+                         "label = rank, time, p). Read it once to compare them side by side.")
+        except Exception as e:
+            sheet_msg = f"# sheet: failed ({type(e).__name__})"
+        rec["sheet_sec"] = round(time.time() - ts, 2)
+        print(f"# find '{a.query}': {verdict} {head}")
+        print("# candidates by p: " + ", ".join(f"#{rank[i]} {sc['times'][i][0]:.0f}-{sc['times'][i][1]:.0f}s p={sc['p'][i]:.2f}"
+                                               for i in idx))
+        print(sheet_msg)
+        if clip_s > 4:
+            print(f"# note: clips here are {clip_s:.0f} s long (long span); for exact timing rerun on a candidate with --in t0-t1 (<= 600 s gives 2-s clips)")
+    elif a.op == "ever":
+        print(f"# ever: {'YES' if ev.get('ever') else 'NO'} (max score {ev.get('max_score', 0):.2f} vs threshold "
+              f"{ev.get('threshold', float('nan')):.2f}; {ev.get('guarantee')}) {head}")
+    elif a.op == "when":
+        iv = r.get("when", {}).get("intervals", [])
+        if iv:
+            print("# when: " + ", ".join(f"{x['t0']:.0f}-{x['t1']:.0f}s (p {x['p_max']:.2f})" for x in iv[:15])
+                  + (f" ... +{len(iv) - 15} more" if len(iv) > 15 else "") + f" {head}")
+        else:
+            sc = r["scores"]
+            idx = topk_diverse(sc["times"], sc["p"], sc["pval"], 3, t1 - t0, clip_s)
+            print("# when: not detected (no clip clears the calibrated threshold); best candidates: "
+                  + ", ".join(f"{sc['times'][i][0]:.0f}-{sc['times'][i][1]:.0f}s (p {sc['p'][i]:.2f})" for i in idx) + f" {head}")
+    elif a.op == "count":
+        c = r.get("count", {})
+        print(f"# count: {c.get('count', 0)} separate occurrences at " + (", ".join(f"{x['t0']:.0f}-{x['t1']:.0f}s" for x in c.get("intervals", [])[:30]) or "-")
+              + f" {head}")
+    else:
+        cv = r.get("curve", [])
+        top = sorted(cv, key=lambda x: -x["p"])[:8]
+        print("# curve peaks: " + ", ".join(f"{x['t0']:.0f}s p {x['p']:.2f}" for x in top) + f" {head}")
+        print("# profile [t_start_s, max p]: " + json.dumps(compact_curve(cv)))
+    rec["sec_total"] = round(time.time() - t_start, 2)
+    _log(rec)
+
+
+def compact_curve(cv, nbins=40):
+    if len(cv) <= nbins:
+        return [[round(x["t0"]), round(x["p"], 2)] for x in cv]
+    edges = np.linspace(0, len(cv), nbins + 1).astype(int)
+    return [[round(cv[a]["t0"]), round(max(x["p"] for x in cv[a:b]), 2)] for a, b in zip(edges[:-1], edges[1:]) if b > a]
+
+
+def _log(rec):
+    try:
+        os.makedirs(os.path.dirname(LOG), exist_ok=True)
+        with open(LOG, "a") as f:
+            f.write(json.dumps(rec) + "\n")
+    except OSError:
+        pass
+
+
+if __name__ == "__main__":
+    main()

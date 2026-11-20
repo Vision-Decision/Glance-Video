@@ -1,0 +1,180 @@
+{
+ "A_parity": {
+  "n_calls": 120,
+  "logit_corr_median": 0.9823762899462576,
+  "decision_agree": 0.9820781998732471,
+  "ever_false_alarm_neg": 0.075,
+  "n_neg": 80,
+  "ever_detection_pos": 0.625,
+  "n_pos": 40
+ },
+ "B_count_synthetic": {
+  "n": 23,
+  "gt_mean": 1.0,
+  "exact": 0.43478260869565216,
+  "within1": 1.0,
+  "mae": 0.5652173913043478,
+  "pred_hist": {
+   "0": 10,
+   "1": 10,
+   "2": 3,
+   "3": 0,
+   "4": 0,
+   "5": 0
+  }
+ },
+ "D_repcount_reps_count": {
+  "n": 152,
+  "MAE": 0.462980422941869,
+  "OBO": 0.2565789473684211
+ },
+ "D_repcount_reps_count_argmax": {
+  "n": 152,
+  "MAE": 0.201826771966088,
+  "OBO": 0.6513157894736842
+ },
+ "D_repcount_count_count": {
+  "n": 152,
+  "MAE": 0.7527647929420457,
+  "OBO": 0.13157894736842105
+ },
+ "latency": {
+  "first_call_per_video(encode)": {
+   "n": 219,
+   "median_s": 1.93,
+   "p90_s": 6.992000000000002
+  },
+  "follow_up_call(cached)": {
+   "n": 109,
+   "median_s": 0.16,
+   "p90_s": 0.27800000000000014,
+   "server_median_s": 0.0261
+  },
+  "by_kind_op": {
+   "A:curve": {
+    "n": 120,
+    "median_s": 0.45,
+    "max_s": 42.53
+   },
+   "B:count": {
+    "n": 25,
+    "median_s": 7.91,
+    "max_s": 33.53
+   },
+   "B:when": {
+    "n": 25,
+    "median_s": 0.49,
+    "max_s": 4.07
+   },
+   "C:when": {
+    "n": 10,
+    "median_s": 0.76,
+    "max_s": 48.64
+   },
+   "D:count": {
+    "n": 152,
+    "median_s": 2.0949999999999998,
+    "max_s": 8.92
+   },
+   "D:reps": {
+    "n": 152,
+    "median_s": 1.9,
+    "max_s": 11.9
+   }
+  },
+  "C_10min": [
+   {
+    "k": 0,
+    "inn": null,
+    "wall": 48.64,
+    "n_clips": 599,
+    "summary": [
+     "# when: 541-542s (p 0.89) [599 clips of 2.0 s over 0-600s]"
+    ]
+   },
+   {
+    "k": 1,
+    "inn": null,
+    "wall": 0.8,
+    "n_clips": 599,
+    "summary": [
+     "# when: 344-378s (p 0.85), 143-160s (p 0.83), 280-298s (p 0.83), 100-104s (p 0.80), 175-192s (p 0.80), 565-580s (p 0.80), 65-68s (p 0.80), 229-236s (p 0.80), 69-72s (p 0.79), 313-342s (p 0.79), 28-42s (p 0.79), 211-226s (p 0.78), 204-210s (p 0.78), 426-452s (p 0.77), 489-496s (p 0.76) ... +23 more [599 clips of 2.0 s over 0-600s]"
+    ]
+   },
+   {
+    "k": 2,
+    "inn": null,
+    "wall": 0.7,
+    "n_clips": 599,
+    "summary": [
+     "# when: never (calibrated NO) [599 clips of 2.0 s over 0-600s]"
+    ]
+   },
+   {
+    "k": 3,
+    "inn": null,
+    "wall": 0.69,
+    "n_clips": 599,
+    "summary": [
+     "# when: never (calibrated NO) [599 clips of 2.0 s over 0-600s]"
+    ]
+   },
+   {
+    "k": 4,
+    "inn": "300-420",
+    "wall": 8.98,
+    "n_clips": 119,
+    "summary": [
+     "# when: never (calibrated NO) [119 clips of 2.0 s over 300-420s]"
+    ]
+   }
+  ],
+  "C_120min": [
+   {
+    "k": 0,
+    "inn": null,
+    "wall": 47.83,
+    "n_clips": 599,
+    "summary": [
+     "# when: 4224-4242s (p 0.86) [599 clips of 24.0 s over 0-7200s]"
+    ]
+   },
+   {
+    "k": 1,
+    "inn": null,
+    "wall": 0.72,
+    "n_clips": 599,
+    "summary": [
+     "# when: 5664-5814s (p 0.85), 1236-1302s (p 0.83), 6252-6390s (p 0.82), 5400-5430s (p 0.82), 1644-1722s (p 0.82), 6108-6210s (p 0.82), 204-234s (p 0.81), 276-378s (p 0.81), 1476-1506s (p 0.81), 3132-3258s (p 0.78), 2568-2622s (p 0.77), 2172-2214s (p 0.77), 3684-3714s (p 0.77), 2376-2406s (p 0.76), 3012-3102s (p 0.75) ... +57 more [599 clips of 24.0 s over 0-7200s]"
+    ]
+   },
+   {
+    "k": 2,
+    "inn": null,
+    "wall": 0.71,
+    "n_clips": 599,
+    "summary": [
+     "# when: 6756-6786s (p 0.84), 1968-2046s (p 0.81), 5772-5802s (p 0.80), 1212-1290s (p 0.79), 3372-3450s (p 0.78), 2136-2190s (p 0.78), 1308-1458s (p 0.77), 1800-1842s (p 0.77), 4236-4302s (p 0.77), 5832-5898s (p 0.76), 3984-4050s (p 0.76), 4776-4806s (p 0.76), 6588-6618s (p 0.76), 720-762s (p 0.75), 3504-3546s (p 0.75) ... +38 more [599 clips of 24.0 s over 0-7200s]"
+    ]
+   },
+   {
+    "k": 3,
+    "inn": null,
+    "wall": 0.68,
+    "n_clips": 599,
+    "summary": [
+     "# when: 4044-4062s (p 0.86), 900-918s (p 0.84), 3012-3030s (p 0.83) [599 clips of 24.0 s over 0-7200s]"
+    ]
+   },
+   {
+    "k": 4,
+    "inn": "3600-3720",
+    "wall": 8.18,
+    "n_clips": 119,
+    "summary": [
+     "# when: never (calibrated NO) [119 clips of 2.0 s over 3600-3720s]"
+    ]
+   }
+  ]
+ }
+}

@@ -1,0 +1,26 @@
+{
+ "backend": "ollama",
+ "set": "",
+ "run": "v2_pilot_base",
+ "model": "deepseek-v4.1-flash",
+ "vdm": false,
+ "vdmscan": false,
+ "permute": false,
+ "effort": "max",
+ "n": 3,
+ "concurrency": 4,
+ "cpus": 2.0,
+ "memory": "24g",
+ "timeout": 1800,
+ "image": "vi-agent:cc2.1.300",
+ "started": "2026-11-19T06:53:01",
+ "items": [
+  "ALLVB_12953",
+  "VideoOdyssey_2669",
+  "ALLVB_20839"
+ ],
+ "paired_with": "v2_pilot",
+ "transcripts": "~/videoindex/data/transcripts",
+ "max_steps": 40,
+ "warm": true
+}

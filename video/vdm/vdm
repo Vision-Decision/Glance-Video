@@ -1,0 +1,385 @@
+#!/usr/bin/env python3
+"""vdm: fast per-frame visual detector for video questions (client; the model runs behind $VDM_URL).
+
+  vdm find   VIDEO "query"  [--fps 1] [--in t0-t1] [--top 5] [--mode both|present|yesno]
+  vdm count  VIDEO "event"  [--fps 2] [--in t0-t1] [--mode ...]
+  vdm verify VIDEO --at t0-t1 "claim" [--fps 2]
+  vdm locate IMAGE "query"
+  vdm motion VIDEO [--in t0-t1] [--fps 4]
+  vdm choose VIDEO --question Q --options "A. ..." "B. ..." [--frames 32] [--in t0-t1]
+
+Model: Glance-4B, scoring each sampled frame independently (single image, no temporal context).
+  P(present) = presence gate of the box primitive for a referring expression ("a red mug").
+  P(yes)     = yes/no head for a question about ONE frame ("Is the person holding a knife?").
+Probabilities are calibrated on natural images (not on video frames): treat them as well-ordered scores.
+Output: JSON on stdout, then one '# ...' summary line. Frames are cached under scratch/vdm_cache/.
+Time is t (seconds from the start of the video).
+"""
+import argparse, base64, hashlib, json, math, os, subprocess, sys, time, urllib.request
+
+URL = os.environ.get("VDM_URL", "http://vi-gateway:8080/vdm").rstrip("/")
+CACHE = os.environ.get("VDM_CACHE", "scratch/vdm_cache")
+MAX_FRAMES = int(os.environ.get("VDM_MAX_FRAMES", "1500"))
+SHORT_SIDE = 448
+CHUNK = 48
+NOTES = []
+COST = {"frames_sent": 0, "server_sec": 0.0}
+
+
+def die(msg):
+    print(json.dumps({"error": msg}))
+    print("# error: " + msg)
+    sys.exit(1)
+
+
+# ------------------------------------------------------------------------------------------- video
+def probe(video):
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                              "stream=width,height:format=duration", "-of", "json", video],
+                             capture_output=True, text=True, timeout=60).stdout
+        d = json.loads(out)
+        return float(d["format"]["duration"]), int(d["streams"][0]["width"]), int(d["streams"][0]["height"])
+    except Exception as e:
+        die(f"cannot probe {video}: {e}")
+
+
+def parse_range(s, dur):
+    if not s:
+        return 0.0, dur
+    a, b = s.split("-", 1)
+    t0, t1 = max(0.0, float(a)), min(dur, float(b)) if b else dur
+    if t1 <= t0:
+        die(f"empty range {s}")
+    return t0, t1
+
+
+def frames(video, t0, t1, fps):
+    """Extract frames at `fps` in [t0, t1] (capped at MAX_FRAMES). -> list of (t, jpeg path)."""
+    span = t1 - t0
+    if span * fps > MAX_FRAMES:
+        new = MAX_FRAMES / span
+        NOTES.append(f"frame cap {MAX_FRAMES}: fps lowered from {fps:g} to {new:.3g} for {span:.0f}s; "
+                     f"use --in to scan a shorter window at a higher fps")
+        fps = new
+    st = os.stat(video)
+    key = hashlib.sha1(f"{os.path.abspath(video)}|{st.st_size}|{st.st_mtime}|{t0:.3f}|{t1:.3f}|{fps:.5f}".encode()).hexdigest()[:16]
+    d = os.path.join(CACHE, key)
+    done = os.path.join(d, "done.json")
+    if not os.path.exists(done):
+        os.makedirs(d, exist_ok=True)
+        sc = f"scale='if(gt(iw,ih),-2,{SHORT_SIDE})':'if(gt(iw,ih),{SHORT_SIDE},-2)'"
+        if 1.0 / fps >= 2.0:
+            # sparse sampling: seek to each timestamp (much faster than decoding the whole video)
+            from concurrent.futures import ThreadPoolExecutor
+            n = max(1, int(span * fps + 1e-6))
+            def grab(i):
+                t = t0 + i / fps
+                subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{t:.3f}", "-i", video, "-frames:v", "1",
+                                "-vf", sc, "-q:v", "3", os.path.join(d, f"f_{i + 1:06d}.jpg")],
+                               capture_output=True, timeout=120)
+            with ThreadPoolExecutor(int(os.environ.get("VDM_FFMPEG_JOBS", "3"))) as ex:
+                list(ex.map(grab, range(n)))
+            missing = [i for i in range(n) if not os.path.exists(os.path.join(d, f"f_{i + 1:06d}.jpg"))]
+            for i in missing:  # past-the-end seeks etc.: fill with the previous frame so indices stay aligned
+                prev = os.path.join(d, f"f_{max(i, 1):06d}.jpg")
+                if os.path.exists(prev):
+                    import shutil
+                    shutil.copy(prev, os.path.join(d, f"f_{i + 1:06d}.jpg"))
+        else:
+            cmd = ["ffmpeg", "-v", "error", "-y", "-ss", f"{t0:.3f}", "-t", f"{span:.3f}", "-i", video,
+                   "-vf", f"fps={fps:.5f},{sc}", "-q:v", "3", os.path.join(d, "f_%06d.jpg")]
+            r = subprocess.run(cmd, capture_output=True, text=True)
+            if r.returncode:
+                die("ffmpeg failed: " + r.stderr[-300:])
+        n = len([f for f in os.listdir(d) if f.startswith("f_")])
+        json.dump({"n": n, "fps": fps, "t0": t0}, open(done, "w"))
+    meta = json.load(open(done))
+    fs = sorted(f for f in os.listdir(d) if f.startswith("f_"))
+    # the fps filter emits frame i at t0 + i/fps (frame centred on its sampling instant)
+    return [(round(t0 + i / meta["fps"], 2), os.path.join(d, f)) for i, f in enumerate(fs)], meta["fps"]
+
+
+# ------------------------------------------------------------------------------------------- server
+def post(body):
+    """POST to the vdm server. Retryable failures (server restarting, 502/503/504, connection errors) are retried
+    with backoff for up to ~2 minutes before the tool call fails (v0.1: robustness only, scoring unchanged)."""
+    req = urllib.request.Request(URL + "/score", json.dumps(body).encode(), {"content-type": "application/json"})
+    t_end, wait, last = time.time() + 120, 2, ""
+    while True:
+        try:
+            with urllib.request.urlopen(req, timeout=600) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            if e.code not in (502, 503, 504):
+                die(f"server error {e.code}: {e.read()[:300]!r}")
+            last = f"HTTP {e.code}"
+        except Exception as e:
+            last = str(e)
+        if time.time() + wait > t_end:
+            die(f"vdm server unavailable at {URL} after retrying for 2 min ({last}); try again later")
+        time.sleep(wait)
+        wait = min(wait * 2, 30)
+
+
+def score_images(paths, **body):
+    out = []
+    for s in range(0, len(paths), CHUNK):
+        imgs = [base64.b64encode(open(p, "rb").read()).decode() for p in paths[s:s + CHUNK]]
+        r = post({**body, "images": imgs})
+        out += r["results"]
+        COST["frames_sent"] += len(imgs)
+        COST["server_sec"] += r.get("sec", 0)
+    return out
+
+
+def signal(r, mode):
+    if mode == "present":
+        return r["p_present"]
+    if mode == "yesno":
+        return r["p_yes"]
+    return 0.5 * (r["p_present"] + r["p_yes"])
+
+
+# ------------------------------------------------------------------------------------------- curve -> events
+def segments(ts, ps, hi, lo=None, min_gap=0.0):
+    """Hysteresis segments: enter at p>=hi, leave at p<lo; merge segments separated by < min_gap s."""
+    lo = hi - 0.2 if lo is None else lo
+    segs, cur = [], None
+    for t, p in zip(ts, ps):
+        if cur is None and p >= hi:
+            cur = [t, t, p, t]
+        elif cur is not None:
+            if p >= lo:
+                cur[1] = t
+                if p > cur[2]:
+                    cur[2], cur[3] = p, t
+            else:
+                segs.append(cur); cur = None
+    if cur:
+        segs.append(cur)
+    merged = []
+    for s in segs:
+        if merged and s[0] - merged[-1][1] < min_gap:
+            m = merged[-1]
+            m[1] = s[1]
+            if s[2] > m[2]:
+                m[2], m[3] = s[2], s[3]
+        else:
+            merged.append(s)
+    return [{"start": a, "end": b, "peak_p": round(p, 3), "peak_t": pt} for a, b, p, pt in merged]
+
+
+def curve_text(ts, ps, width=60):
+    """Compact sparkline-like summary: max p per time bucket."""
+    if not ts:
+        return ""
+    n = min(width, len(ts))
+    lv = " .:-=+*#"
+    out = []
+    for i in range(n):
+        a, b = i * len(ps) // n, max(i * len(ps) // n + 1, (i + 1) * len(ps) // n)
+        out.append(lv[min(7, int(max(ps[a:b]) * 7.999))])
+    return "".join(out)
+
+
+# ------------------------------------------------------------------------------------------- commands
+def cmd_find(a):
+    dur, W, H = probe(a.video)
+    t0, t1 = parse_range(a.inn, dur)
+    fr, fps = frames(a.video, t0, t1, a.fps)
+    rs = score_images([p for _, p in fr], query=a.query, mode=a.mode, want_box=True)
+    ts = [t for t, _ in fr]
+    ps = [round(signal(r, a.mode), 3) for r in rs]
+    segs = segments(ts, ps, a.thr, min_gap=1.5 / fps)
+    segs.sort(key=lambda s: -s["peak_p"])
+    sx = W / max(1, (SHORT_SIDE * W / H if W > H else SHORT_SIDE))  # frame px -> video px
+    for s in segs[:a.top]:
+        r = rs[ts.index(s["peak_t"])]
+        if r.get("box") and r.get("p_present", 0) >= 0.5:
+            s["box_video_px"] = [round(v * sx) for v in r["box"]]
+            s["p_present_at_peak"] = r["p_present"]
+    best = max(range(len(ps)), key=lambda i: ps[i]) if ps else None
+    out = {"cmd": "find", "query": a.query, "mode": a.mode, "range": [t0, t1], "fps": round(fps, 4),
+           "n_frames": len(ts), "threshold": a.thr, "intervals": segs[:a.top], "n_intervals": len(segs),
+           "max_p": ps[best] if ps else None, "max_t": ts[best] if ps else None,
+           "curve": {"t": ts, "p": ps} if a.curve or len(ts) <= 120 else "omitted (--curve to print)",
+           "curve_sketch": curve_text(ts, ps), "notes": NOTES, "cost": COST}
+    print(json.dumps(out))
+    top = ", ".join(f"{s['start']:.1f}-{s['end']:.1f}s p={s['peak_p']}" for s in segs[:3]) or "none above threshold"
+    print(f"# find '{a.query}': {len(segs)} interval(s) over {t0:.0f}-{t1:.0f}s; top: {top}; "
+          f"max p={out['max_p']} at {out['max_t']}s")
+
+
+def cmd_count(a):
+    dur, W, H = probe(a.video)
+    t0, t1 = parse_range(a.inn, dur)
+    fr, fps = frames(a.video, t0, t1, a.fps)
+    rs = score_images([p for _, p in fr], query=a.query, mode=a.mode, want_box=False)
+    ts = [t for t, _ in fr]
+    ps = [round(signal(r, a.mode), 3) for r in rs]
+    grid = {}
+    for thr in (0.3, 0.5, 0.7):
+        for gap in (0.5, 1.0, 2.0):
+            grid[f"thr{thr}_gap{gap}"] = len(segments(ts, ps, thr, min_gap=max(gap, 1.0 / fps)))
+    from collections import Counter
+    dist = Counter(grid.values())
+    tot = sum(dist.values())
+    main = segments(ts, ps, 0.5, min_gap=max(1.0, 1.0 / fps))
+    out = {"cmd": "count", "query": a.query, "mode": a.mode, "range": [t0, t1], "fps": round(fps, 4),
+           "n_frames": len(ts), "count_default": len(main),
+           "count_distribution": {str(k): round(v / tot, 3) for k, v in sorted(dist.items())},
+           "settings": grid, "events_default": main,
+           "curve": {"t": ts, "p": ps} if a.curve or len(ts) <= 120 else "omitted (--curve to print)",
+           "curve_sketch": curve_text(ts, ps), "notes": NOTES + [
+               "a count is the number of separated above-threshold segments; one long continuous event counts "
+               "once, events shorter than the frame spacing can be missed: raise --fps for short repeated actions"],
+           "cost": COST}
+    print(json.dumps(out))
+    print(f"# count '{a.query}': default {len(main)} (thr 0.5, gap 1s); distribution over 9 settings "
+          f"{out['count_distribution']}; events at " + ", ".join(f"{e['peak_t']}s" for e in main[:20]))
+
+
+def cmd_verify(a):
+    dur, W, H = probe(a.video)
+    t0, t1 = parse_range(a.at, dur)
+    fps = min(a.fps, 64 / max(t1 - t0, 1e-3))
+    fr, fps = frames(a.video, t0, t1, fps)
+    rs = score_images([p for _, p in fr], query=a.claim, mode="yesno", want_box=False)
+    ps = [r["p_yes"] for r in rs]
+    k = max(1, len(ps) // 4)
+    out = {"cmd": "verify", "claim": a.claim, "range": [t0, t1], "n_frames": len(ps),
+           "p_yes_mean": round(sum(ps) / len(ps), 3) if ps else None, "p_yes_max": max(ps) if ps else None,
+           "p_yes_top25_mean": round(sum(sorted(ps)[-k:]) / k, 3) if ps else None,
+           "per_frame": [{"t": t, "p_yes": p} for (t, _), p in zip(fr, ps)], "notes": NOTES, "cost": COST}
+    print(json.dumps(out))
+    print(f"# verify '{a.claim}' in {t0:.1f}-{t1:.1f}s: p_yes mean {out['p_yes_mean']}, max {out['p_yes_max']} "
+          f"over {len(ps)} frames")
+
+
+def cmd_locate(a):
+    from PIL import Image
+    im = Image.open(a.image).convert("RGB")
+    W, H = im.size
+    s = min(1.0, 1280 / max(W, H))
+    if s < 1:
+        im = im.resize((round(W * s), round(H * s)))
+    os.makedirs(CACHE, exist_ok=True)
+    p = os.path.join(CACHE, "locate_" + hashlib.sha1(open(a.image, "rb").read()).hexdigest()[:12] + ".jpg")
+    im.save(p, quality=92)
+    r = score_images([p], query=a.query, mode="present", want_box=True)[0]
+    box = [round(v / s, 1) for v in r["box"]]
+    out = {"cmd": "locate", "query": a.query, "image_size": [W, H], "p_present": r["p_present"],
+           "box": box, "iou_prob": r.get("iou_prob"), "present": r["p_present"] >= 0.5, "cost": COST}
+    print(json.dumps(out))
+    print(f"# locate '{a.query}': P(present)={r['p_present']}"
+          + (f", box {box} (x1,y1,x2,y2 px)" if out["present"] else " (absent; box meaningless)"))
+
+
+def cmd_motion(a):
+    import cv2, numpy as np
+    dur, W, H = probe(a.video)
+    t0, t1 = parse_range(a.inn, dur)
+    fr, fps = frames(a.video, t0, t1, a.fps)
+    hfov = a.hfov
+    rows, prev = [], None
+    for t, p in fr:
+        g = cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY)
+        g = cv2.resize(g, (320, round(320 * g.shape[0] / g.shape[1])))
+        if prev is not None:
+            fl = cv2.calcOpticalFlowFarneback(prev, g, None, 0.5, 3, 21, 3, 5, 1.1, 0)
+            dx, dy = np.median(fl[..., 0]), np.median(fl[..., 1])
+            h, w = g.shape
+            xs = np.linspace(-1, 1, w)[None, :].repeat(h, 0)
+            ys = np.linspace(-1, 1, h)[:, None].repeat(w, 1)
+            div = float(np.mean(fl[..., 0] * xs + fl[..., 1] * ys))  # >0: expansion (moving forward / zoom in)
+            yaw = -dx / w * hfov  # camera turns right -> scene moves left (dx<0) -> yaw>0 (right)
+            rows.append((t, float(yaw), float(dy), div))
+        prev = g
+    # turn events: cumulative yaw over sliding windows of <= 4 s exceeding 30 degrees
+    events, i = [], 0
+    while i < len(rows):
+        cum, j = 0.0, i
+        while j < len(rows) and rows[j][0] - rows[i][0] <= a.window:
+            cum += rows[j][1]
+            j += 1
+        if abs(cum) >= a.turn_deg:
+            k = j  # extend while the camera keeps turning the same way
+            while k < len(rows) and (rows[k][1] > 0) == (cum > 0) and abs(rows[k][1]) > 0.5:
+                k += 1
+            yaw = sum(r[1] for r in rows[i:k])
+            events.append({"start": rows[i][0], "end": rows[k - 1][0],
+                           "direction": "right" if cum > 0 else "left", "yaw_deg": round(yaw, 1)})
+            i = k
+        else:
+            i += 1
+    per_s = {}
+    for t, yaw, dy, div in rows:
+        b = int(t)
+        y0, d0, n = per_s.get(b, (0.0, 0.0, 0))
+        per_s[b] = (y0 + yaw, d0 + div, n + 1)
+    timeline = [{"t": b, "yaw_deg": round(y, 1), "forward": round(d / n, 3)} for b, (y, d, n) in sorted(per_s.items())]
+    total = sum(r[1] for r in rows)
+    out = {"cmd": "motion", "range": [t0, t1], "fps": round(fps, 3), "assumed_hfov_deg": hfov,
+           "turn_events": events, "net_yaw_deg": round(total, 1),
+           "timeline_per_second": timeline if len(timeline) <= 300 else "omitted (>300 s; use --in)",
+           "notes": NOTES + ["yaw from median horizontal optical flow, scaled by an assumed horizontal FOV; signs: "
+                             "right = clockwise seen from above. 'forward' > 0 means the image expands (camera moves "
+                             "forward or zooms in). Rough: independent of any model, fooled by large moving objects."]}
+    print(json.dumps(out))
+    print(f"# motion {t0:.0f}-{t1:.0f}s: {len(events)} turn(s): " +
+          ", ".join(f"{e['direction']} {abs(e['yaw_deg'])}deg at {e['start']}-{e['end']}s" for e in events[:15]) +
+          f"; net yaw {out['net_yaw_deg']}deg")
+
+
+def cmd_choose(a):
+    dur, W, H = probe(a.video)
+    t0, t1 = parse_range(a.inn, dur)
+    fps = a.frames / (t1 - t0)
+    fr, fps = frames(a.video, t0, t1, fps)
+    opts = [o.split(". ", 1)[1] if len(o) > 2 and o[1:3] == ". " else o for o in a.options]
+    letters = [o[0] if len(o) > 2 and o[1:3] == ". " else chr(65 + i) for i, o in enumerate(a.options)]
+    rs = score_images([p for _, p in fr], questions=[{"type": "choice", "question": a.question, "options": opts}])
+    import numpy as np
+    P = np.array([r[0]["probs"] for r in rs])
+    mean = P.mean(0)
+    logmean = np.exp(np.log(P + 1e-6).mean(0)); logmean /= logmean.sum()
+    out = {"cmd": "choose", "question": a.question, "n_frames": len(rs),
+           "mean_prob": {l: round(float(v), 3) for l, v in zip(letters, mean)},
+           "geo_mean_prob": {l: round(float(v), 3) for l, v in zip(letters, logmean)},
+           "answer": letters[int(mean.argmax())], "notes": NOTES + [
+               "each frame answers the multiple-choice question alone (no temporal context); probabilities are "
+               "averaged over uniformly sampled frames"], "cost": COST}
+    print(json.dumps(out))
+    print(f"# choose: {out['answer']} (mean over {len(rs)} frames: {out['mean_prob']})")
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="vdm", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sp = ap.add_subparsers(dest="cmd", required=True)
+    f = sp.add_parser("find"); f.add_argument("video"); f.add_argument("query")
+    f.add_argument("--fps", type=float, default=1.0); f.add_argument("--in", dest="inn")
+    f.add_argument("--top", type=int, default=5); f.add_argument("--thr", type=float, default=0.5)
+    f.add_argument("--mode", default="both", choices=["both", "present", "yesno"]); f.add_argument("--curve", action="store_true")
+    c = sp.add_parser("count"); c.add_argument("video"); c.add_argument("query")
+    c.add_argument("--fps", type=float, default=2.0); c.add_argument("--in", dest="inn")
+    c.add_argument("--mode", default="both", choices=["both", "present", "yesno"]); c.add_argument("--curve", action="store_true")
+    v = sp.add_parser("verify"); v.add_argument("video"); v.add_argument("claim"); v.add_argument("--at", required=True)
+    v.add_argument("--fps", type=float, default=2.0)
+    l = sp.add_parser("locate"); l.add_argument("image"); l.add_argument("query")
+    m = sp.add_parser("motion"); m.add_argument("video"); m.add_argument("--in", dest="inn")
+    m.add_argument("--fps", type=float, default=4.0); m.add_argument("--hfov", type=float, default=70.0)
+    m.add_argument("--turn-deg", type=float, default=30.0); m.add_argument("--window", type=float, default=4.0)
+    ch = sp.add_parser("choose"); ch.add_argument("video"); ch.add_argument("--question", required=True)
+    ch.add_argument("--options", nargs="+", required=True); ch.add_argument("--frames", type=int, default=32)
+    ch.add_argument("--in", dest="inn")
+    a = ap.parse_args()
+    t = time.time()
+    {"find": cmd_find, "count": cmd_count, "verify": cmd_verify, "locate": cmd_locate,
+     "motion": cmd_motion, "choose": cmd_choose}[a.cmd](a)
+    print(f"# cost: {COST['frames_sent']} frames sent, server {COST['server_sec']:.1f}s, wall {time.time()-t:.1f}s",
+          file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()

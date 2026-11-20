@@ -1,0 +1,147 @@
+{
+ "_written": "2026-11-18, before any v1 scoring. Video-Index videos are evaluation-only: nothing below is tuned on them.",
+ "clip": {
+  "decode_fps": 2,
+  "frames_per_clip": 4,
+  "clip_seconds": 2.0,
+  "stride_seconds": 1.0,
+  "frame_short_side": 448,
+  "max_vis_tokens_per_frame": 256
+ },
+ "backends": {
+  "glance-clip": "Glance-4B-preview, LoRA on, typed yes/no head (calibrated temperature as shipped), block-bidirectional question block; the clip = 4 consecutive frames as a multi-image prefix (Glance only supports images)",
+  "qwen-clip": "same weights with the LoRA disabled (= base Qwen3.5-4B), causal question block, P(yes) = softmax over logsumexp{yes,Yes} vs logsumexp{no,No} of the LM head at the answer position; identical multi-image prefix",
+  "qwen-video (optional)": "base Qwen3.5-4B through the HF processor's native video input (4 frames as one video), same yes/no readout"
+ },
+ "count_rule": {
+  "primary": {
+   "hi": 0.5,
+   "lo": 0.35,
+   "merge_gap_s": 2.0
+  },
+  "distribution": {
+   "hi": [
+    0.3,
+    0.5,
+    0.7
+   ],
+   "lo": "hi-0.15",
+   "merge_gap_s": [
+    1.0,
+    2.0,
+    4.0
+   ]
+  },
+  "count": "number of hysteresis segments of P(t) after merging segments closer than merge_gap_s",
+  "scoring": "exact = primary count == key count; within1 = |primary - key| <= 1"
+ },
+ "choose": {
+  "slice": "100 v1.0 items not in v1.1, random.Random(0).sample(sorted ids, 100)",
+  "v0-frame": "Glance choice head on 32 uniform single frames, mean of option probabilities (= v0 choose)",
+  "glance-clip": "Glance choice head on 8 uniform 4-frame clips, mean of option probabilities",
+  "qwen-clip": "base Qwen3.5-4B letter logprob (A..) on the same 8 clips, prompt identical to Glance's choice block, mean",
+  "report": "accuracy and argmin accuracy, by capability group"
+ },
+ "count_items": {
+  "v1.1 (rerun, compare with v0 6/64/27/16)": {
+   "S-EMBER_26": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   },
+   "S-EMBER_888": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   },
+   "S-EMBER_1448": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   },
+   "S-EMBER_7718": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   }
+  },
+  "v1.0 held-out (action_counting, not in v1.1)": {
+   "MLVU_726": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   },
+   "VideoEval-Pro_248": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   },
+   "S-EMBER_5839": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   },
+   "S-EMBER_3434": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   },
+   "S-EMBER_6821": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   },
+   "MLVU_700": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   },
+   "MLVU_655": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   },
+   "S-EMBER_1495": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   },
+   "MLVU_603": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   },
+   "MLVU_605": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   },
+   "VideoAds_117": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   },
+   "S-EMBER_3864": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   },
+   "VGenST-Bench_7372": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   },
+   "VGenST-Bench_7352": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   },
+   "VGenST-Bench_7324": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   },
+   "S-EMBER_5713": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   },
+   "S-EMBER_5932": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   },
+   "S-EMBER_4729": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   },
+   "S-EMBER_4266": {
+    "key": "[redacted]",
+    "q": "[redacted]"
+   }
+  },
+  "_excluded": {
+   "FAVOR-Bench_4206": "not a count",
+   "S-EMBER_9447": "needs which-item context"
+  }
+ }
+}

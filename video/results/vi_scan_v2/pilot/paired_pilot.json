@@ -1,0 +1,293 @@
+{
+ "a": "v2_pilot_base",
+ "b": "v2_pilot_scan",
+ "n_a": 8,
+ "n_b": 8,
+ "n_common": 8,
+ "overall": {
+  "n": 8,
+  "acc_a": 0.125,
+  "acc_b": 0.25,
+  "correct_a": 1,
+  "correct_b": 2,
+  "delta_pp": 12.5,
+  "ci95_pp": [
+   -25.0,
+   50.0
+  ],
+  "fixes": 2,
+  "breaks": 1,
+  "mcnemar_p": 1.0
+ },
+ "by_slice": {
+  "counting": {
+   "n": 2,
+   "acc_a": 0.5,
+   "acc_b": 0.0,
+   "correct_a": 1,
+   "correct_b": 0,
+   "delta_pp": -50.0,
+   "ci95_pp": [
+    -100.0,
+    0.0
+   ],
+   "fixes": 0,
+   "breaks": 1,
+   "mcnemar_p": 1.0
+  },
+  "temporal": {
+   "n": 0,
+   "acc_a": 0.0,
+   "acc_b": 0.0,
+   "correct_a": 0,
+   "correct_b": 0,
+   "delta_pp": 0.0,
+   "ci95_pp": [
+    0,
+    0
+   ],
+   "fixes": 0,
+   "breaks": 0,
+   "mcnemar_p": 1.0
+  },
+  "perception": {
+   "n": 2,
+   "acc_a": 0.0,
+   "acc_b": 0.5,
+   "correct_a": 0,
+   "correct_b": 1,
+   "delta_pp": 50.0,
+   "ci95_pp": [
+    0.0,
+    100.0
+   ],
+   "fixes": 1,
+   "breaks": 0,
+   "mcnemar_p": 1.0
+  },
+  "spatial": {
+   "n": 2,
+   "acc_a": 0.0,
+   "acc_b": 0.0,
+   "correct_a": 0,
+   "correct_b": 0,
+   "delta_pp": 0.0,
+   "ci95_pp": [
+    0.0,
+    0.0
+   ],
+   "fixes": 0,
+   "breaks": 0,
+   "mcnemar_p": 1.0
+  },
+  "reasoning": {
+   "n": 2,
+   "acc_a": 0.0,
+   "acc_b": 0.5,
+   "correct_a": 0,
+   "correct_b": 1,
+   "delta_pp": 50.0,
+   "ci95_pp": [
+    0.0,
+    100.0
+   ],
+   "fixes": 1,
+   "breaks": 0,
+   "mcnemar_p": 1.0
+  }
+ },
+ "by_group": {
+  "perception": {
+   "n": 3,
+   "acc_a": 0.3333333333333333,
+   "acc_b": 0.3333333333333333,
+   "correct_a": 1,
+   "correct_b": 1,
+   "delta_pp": 0.0,
+   "ci95_pp": [
+    -100.0,
+    100.0
+   ],
+   "fixes": 1,
+   "breaks": 1,
+   "mcnemar_p": 1.0
+  },
+  "reasoning_knowledge": {
+   "n": 2,
+   "acc_a": 0.0,
+   "acc_b": 0.5,
+   "correct_a": 0,
+   "correct_b": 1,
+   "delta_pp": 50.0,
+   "ci95_pp": [
+    0.0,
+    100.0
+   ],
+   "fixes": 1,
+   "breaks": 0,
+   "mcnemar_p": 1.0
+  },
+  "spatial_physical": {
+   "n": 2,
+   "acc_a": 0.0,
+   "acc_b": 0.0,
+   "correct_a": 0,
+   "correct_b": 0,
+   "delta_pp": 0.0,
+   "ci95_pp": [
+    0.0,
+    0.0
+   ],
+   "fixes": 0,
+   "breaks": 0,
+   "mcnemar_p": 1.0
+  },
+  "temporal": {
+   "n": 1,
+   "acc_a": 0.0,
+   "acc_b": 0.0,
+   "correct_a": 0,
+   "correct_b": 0,
+   "delta_pp": 0.0,
+   "ci95_pp": [
+    0.0,
+    0.0
+   ],
+   "fixes": 0,
+   "breaks": 0,
+   "mcnemar_p": 1.0
+  }
+ },
+ "by_source": {
+  "ALLVB": {
+   "n": 2,
+   "acc_a": 0.0,
+   "acc_b": 0.5,
+   "correct_a": 0,
+   "correct_b": 1,
+   "delta_pp": 50.0,
+   "ci95_pp": [
+    0.0,
+    100.0
+   ],
+   "fixes": 1,
+   "breaks": 0,
+   "mcnemar_p": 1.0
+  },
+  "S-EMBER": {
+   "n": 2,
+   "acc_a": 0.5,
+   "acc_b": 0.0,
+   "correct_a": 1,
+   "correct_b": 0,
+   "delta_pp": -50.0,
+   "ci95_pp": [
+    -100.0,
+    0.0
+   ],
+   "fixes": 0,
+   "breaks": 1,
+   "mcnemar_p": 1.0
+  },
+  "UrbanVideo-Bench": {
+   "n": 2,
+   "acc_a": 0.0,
+   "acc_b": 0.0,
+   "correct_a": 0,
+   "correct_b": 0,
+   "delta_pp": 0.0,
+   "ci95_pp": [
+    0.0,
+    0.0
+   ],
+   "fixes": 0,
+   "breaks": 0,
+   "mcnemar_p": 1.0
+  },
+  "ViMUL-Bench": {
+   "n": 1,
+   "acc_a": 0.0,
+   "acc_b": 0.0,
+   "correct_a": 0,
+   "correct_b": 0,
+   "delta_pp": 0.0,
+   "ci95_pp": [
+    0.0,
+    0.0
+   ],
+   "fixes": 0,
+   "breaks": 0,
+   "mcnemar_p": 1.0
+  },
+  "VideoOdyssey": {
+   "n": 1,
+   "acc_a": 0.0,
+   "acc_b": 1.0,
+   "correct_a": 0,
+   "correct_b": 1,
+   "delta_pp": 100.0,
+   "ci95_pp": [
+    100.0,
+    100.0
+   ],
+   "fixes": 1,
+   "breaks": 0,
+   "mcnemar_p": 1.0
+  }
+ },
+ "cost_time": {
+  "a": {
+   "wall_min_mean": 10.955,
+   "wall_min_median": 11.729999999999999,
+   "wall_hours_total": 1.4606666666666666,
+   "timeouts": 0,
+   "errors": 0,
+   "tool_calls_mean": 39.875,
+   "frame_steps_mean": 28,
+   "frame_steps_median": 27.5,
+   "planner_requests_mean": 44.75,
+   "planner_requests_median": 43.5,
+   "forced_answers": 1,
+   "warm_s_median": 0,
+   "input_tokens_mean": 1140200.5,
+   "output_tokens_mean": 42120.875,
+   "cost_usd_total": 0.42191,
+   "cost_usd_mean": 0.05273875,
+   "scan_cmds_mean": 0,
+   "items_using_scan": 0,
+   "scan_ops": {},
+   "scan_first_call_s_median": null,
+   "scan_followup_s_median": null,
+   "n_scan_calls_logged": 0
+  },
+  "b": {
+   "wall_min_mean": 10.739791666666667,
+   "wall_min_median": 11.240833333333335,
+   "wall_hours_total": 1.4319722222222224,
+   "timeouts": 0,
+   "errors": 0,
+   "tool_calls_mean": 41.625,
+   "frame_steps_mean": 25.375,
+   "frame_steps_median": 26.5,
+   "planner_requests_mean": 43.5,
+   "planner_requests_median": 44.5,
+   "forced_answers": 1,
+   "warm_s_median": 30.7,
+   "input_tokens_mean": 1159709.125,
+   "output_tokens_mean": 43700.5,
+   "cost_usd_total": 0.445963,
+   "cost_usd_mean": 0.055745375,
+   "scan_cmds_mean": 3.25,
+   "items_using_scan": 7,
+   "scan_ops": {
+    "find": 21,
+    "when": 1,
+    "count": 4
+   },
+   "scan_first_call_s_median": 6.765,
+   "scan_followup_s_median": 8.02,
+   "n_scan_calls_logged": 23
+  }
+ },
+ "per_item": "[redacted: per-item Video-Index rows are in the private dataset]"
+}

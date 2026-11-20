@@ -1,0 +1,161 @@
+<svg viewBox="0 0 704 392">
+<rect class="panel" x="0" y="0" width="704" height="392" rx="12"/>
+<text class="caps" x="24" y="30">整段视频 · 319 s</text>
+<line class="edge" x1="176" y1="144" x2="680" y2="144"/>
+<line class="edge" x1="176" y1="141" x2="176" y2="147"/><text class="small mid" x="176" y="158">0 s</text>
+<line class="edge" x1="334" y1="141" x2="334" y2="147"/><text class="small mid" x="334" y="158">100 s</text>
+<line class="edge" x1="492" y1="141" x2="492" y2="147"/><text class="small mid" x="492" y="158">200 s</text>
+<line class="edge" x1="650" y1="141" x2="650" y2="147"/><text class="small mid" x="650" y="158">300 s</text>
+<text class="small" x="24" y="62">回答正确者报告的指向</text>
+<text x="24" y="92">Gemini 4 Argon</text>
+<text x="24" y="120">GPT-6-Astra</text>
+<line x1="176" y1="92" x2="680" y2="92" stroke="var(--line)"/>
+<rect x="176" y="89" width="504" height="6" rx="2" fill="var(--stone)"/>
+<rect x="207.6" y="85" width="14.2" height="14" rx="2" fill="var(--blue)"/>
+<rect x="376.7" y="85" width="25.3" height="14" rx="2" fill="var(--blue)"/>
+<rect x="539.4" y="85" width="11.1" height="14" rx="2" fill="var(--blue)"/>
+<rect x="567.8" y="85" width="9.5" height="14" rx="2" fill="var(--blue)"/>
+<line x1="176" y1="120" x2="680" y2="120" stroke="var(--line)"/>
+<rect x="176" y="117" width="504" height="6" rx="2" fill="var(--stone)"/>
+<rect x="176" y="117" width="504" height="6" rx="2" fill="var(--stone)"/>
+<rect x="378.2" y="113" width="22.1" height="14" rx="2" fill="var(--blue)"/>
+<rect x="539.4" y="117" width="36.3" height="6" rx="2" fill="var(--stone)"/>
+<rect x="378.5" y="83" width="3" height="18" rx="2" fill="none" stroke="var(--ink)" stroke-width="1.5"/>
+<rect x="383.3" y="83" width="3" height="18" rx="2" fill="none" stroke="var(--ink)" stroke-width="1.5"/>
+<rect x="568.9" y="83" width="5.2" height="18" rx="2" fill="none" stroke="var(--ink)" stroke-width="1.5"/>
+<line x1="379.8" y1="66" x2="379.8" y2="128" stroke="var(--teal)" stroke-dasharray="2 3"/>
+<circle cx="379.8" cy="62" r="3.5" fill="var(--teal)"/>
+<line x1="384.6" y1="66" x2="384.6" y2="128" stroke="var(--teal)" stroke-dasharray="2 3"/>
+<circle cx="384.6" cy="62" r="3.5" fill="var(--teal)"/>
+<line x1="387.7" y1="66" x2="387.7" y2="128" stroke="var(--clay)" stroke-dasharray="2 3"/>
+<circle cx="387.7" cy="62" r="3.5" fill="var(--clay)"/>
+<line x1="542.5" y1="66" x2="542.5" y2="128" stroke="var(--clay)" stroke-dasharray="2 3"/>
+<circle cx="542.5" cy="62" r="3.5" fill="var(--clay)"/>
+<line x1="569.4" y1="66" x2="569.4" y2="128" stroke="var(--teal)" stroke-dasharray="2 3"/>
+<circle cx="569.4" cy="62" r="3.5" fill="var(--teal)"/>
+<text class="small" x="24" y="106">答 3 次</text><text class="small" x="24" y="134">答 5 次（正确）</text>
+<text class="caps" x="24" y="210">放大 120–145 s</text>
+<line class="edge" x1="80" y1="324" x2="340" y2="324"/>
+<line class="edge" x1="80" y1="321" x2="80" y2="327"/><text class="small mid" x="80" y="338">120 s</text>
+<line class="edge" x1="204.8" y1="321" x2="204.8" y2="327"/><text class="small mid" x="204.8" y="338">132 s</text>
+<line class="edge" x1="340" y1="321" x2="340" y2="327"/><text class="small mid" x="340" y="338">145 s</text>
+<line x1="80" y1="270" x2="340" y2="270" stroke="var(--line)"/>
+<rect x="80" y="267" width="260" height="6" rx="2" fill="var(--stone)"/>
+<rect x="152.8" y="263" width="166.4" height="14" rx="2" fill="var(--blue)"/>
+<line x1="80" y1="300" x2="340" y2="300" stroke="var(--line)"/>
+<rect x="80" y="297" width="260" height="6" rx="2" fill="var(--stone)"/>
+<rect x="80" y="297" width="260" height="6" rx="2" fill="var(--stone)"/>
+<rect x="163.2" y="293" width="145.6" height="14" rx="2" fill="var(--blue)"/>
+<rect x="165.3" y="261" width="10.4" height="18" rx="2" fill="none" stroke="var(--ink)" stroke-width="1.5"/>
+<rect x="196.5" y="261" width="10.4" height="18" rx="2" fill="none" stroke="var(--ink)" stroke-width="1.5"/>
+<line x1="173.6" y1="246" x2="173.6" y2="308" stroke="var(--teal)" stroke-dasharray="2 3"/>
+<g class="node teal"><circle cx="173.6" cy="238" r="8"/><text class="mid" x="173.6" y="238" font-size="11">1</text></g>
+<line x1="204.8" y1="246" x2="204.8" y2="308" stroke="var(--teal)" stroke-dasharray="2 3"/>
+<g class="node teal"><circle cx="204.8" cy="238" r="8"/><text class="mid" x="204.8" y="238" font-size="11">2</text></g>
+<line x1="225.6" y1="246" x2="225.6" y2="308" stroke="var(--clay)" stroke-dasharray="2 3"/>
+<g class="node clay"><circle cx="225.6" cy="238" r="8"/><text class="mid" x="225.6" y="238" font-size="11">3</text></g>
+<text class="small" x="24" y="270">Argon</text><text class="small" x="24" y="300">Astra</text>
+<text class="caps" x="364" y="210">放大 225–258 s</text>
+<line class="edge" x1="420" y1="324" x2="680" y2="324"/>
+<line class="edge" x1="420" y1="321" x2="420" y2="327"/><text class="small mid" x="420" y="338">225 s</text>
+<line class="edge" x1="538.2" y1="321" x2="538.2" y2="327"/><text class="small mid" x="538.2" y="338">240 s</text>
+<line class="edge" x1="680" y1="321" x2="680" y2="327"/><text class="small mid" x="680" y="338">258 s</text>
+<line x1="420" y1="270" x2="680" y2="270" stroke="var(--line)"/>
+<rect x="420" y="267" width="260" height="6" rx="2" fill="var(--stone)"/>
+<rect x="459.4" y="263" width="55.2" height="14" rx="2" fill="var(--blue)"/>
+<rect x="601.2" y="263" width="47.3" height="14" rx="2" fill="var(--blue)"/>
+<line x1="420" y1="300" x2="680" y2="300" stroke="var(--line)"/>
+<rect x="420" y="297" width="260" height="6" rx="2" fill="var(--stone)"/>
+<rect x="420" y="297" width="260" height="6" rx="2" fill="var(--stone)"/>
+<rect x="459.4" y="297" width="181.2" height="6" rx="2" fill="var(--stone)"/>
+<rect x="606.7" y="261" width="26" height="18" rx="2" fill="none" stroke="var(--ink)" stroke-width="1.5"/>
+<line x1="475.2" y1="246" x2="475.2" y2="308" stroke="var(--clay)" stroke-dasharray="2 3"/>
+<g class="node clay"><circle cx="475.2" cy="238" r="8"/><text class="mid" x="475.2" y="238" font-size="11">4</text></g>
+<line x1="609.1" y1="246" x2="609.1" y2="308" stroke="var(--teal)" stroke-dasharray="2 3"/>
+<g class="node teal"><circle cx="609.1" cy="238" r="8"/><text class="mid" x="609.1" y="238" font-size="11">5</text></g>
+<text class="small" x="364" y="270">Argon</text><text class="small" x="364" y="300">Astra</text>
+<rect x="24" y="356" width="18" height="6" rx="2" fill="var(--stone)"/><text class="small" x="48" y="359">≤1 帧/秒的整段浏览</text>
+<rect x="176" y="352" width="18" height="14" rx="2" fill="var(--blue)"/><text class="small" x="200" y="359">2–6 帧/秒的细看窗口</text>
+<rect x="340" y="351" width="16" height="16" rx="2" fill="none" stroke="var(--ink)" stroke-width="1.5"/><text class="small" x="362" y="359">Argon 数到的指向</text>
+<circle cx="480" cy="359" r="6" fill="var(--clay)"/><text class="small" x="492" y="359">落在 Argon 细看过的窗口里，却没数到</text>
+</svg>
+<svg viewBox="0 0 340 560">
+<rect class="panel" x="0" y="0" width="340" height="560" rx="12"/>
+<text class="caps" x="16" y="28">整段视频 · 319 s</text>
+<line class="edge" x1="96" y1="138" x2="320" y2="138"/>
+<line class="edge" x1="96" y1="135" x2="96" y2="141"/><text class="small mid" x="96" y="152">0 s</text>
+<line class="edge" x1="201.3" y1="135" x2="201.3" y2="141"/><text class="small mid" x="201.3" y="152">150 s</text>
+<line class="edge" x1="306.7" y1="135" x2="306.7" y2="141"/><text class="small mid" x="306.7" y="152">300 s</text>
+<text class="small" x="16" y="56">正确者报告</text>
+<text x="16" y="86">Argon</text>
+<text x="16" y="114">Astra</text>
+<line x1="96" y1="86" x2="320" y2="86" stroke="var(--line)"/>
+<rect x="96" y="83" width="224" height="6" rx="2" fill="var(--stone)"/>
+<rect x="110" y="79" width="6.3" height="14" rx="2" fill="var(--blue)"/>
+<rect x="185.2" y="79" width="11.2" height="14" rx="2" fill="var(--blue)"/>
+<rect x="257.5" y="79" width="4.9" height="14" rx="2" fill="var(--blue)"/>
+<rect x="270.1" y="79" width="4.2" height="14" rx="2" fill="var(--blue)"/>
+<line x1="96" y1="114" x2="320" y2="114" stroke="var(--line)"/>
+<rect x="96" y="111" width="224" height="6" rx="2" fill="var(--stone)"/>
+<rect x="96" y="111" width="224" height="6" rx="2" fill="var(--stone)"/>
+<rect x="185.9" y="107" width="9.8" height="14" rx="2" fill="var(--blue)"/>
+<rect x="257.5" y="111" width="16.2" height="6" rx="2" fill="var(--stone)"/>
+<rect x="186" y="77" width="3" height="18" rx="2" fill="none" stroke="var(--ink)" stroke-width="1.5"/>
+<rect x="188.1" y="77" width="3" height="18" rx="2" fill="none" stroke="var(--ink)" stroke-width="1.5"/>
+<rect x="270.6" y="77" width="3" height="18" rx="2" fill="none" stroke="var(--ink)" stroke-width="1.5"/>
+<line x1="186.6" y1="60" x2="186.6" y2="122" stroke="var(--teal)" stroke-dasharray="2 3"/>
+<circle cx="186.6" cy="56" r="3.5" fill="var(--teal)"/>
+<line x1="188.7" y1="60" x2="188.7" y2="122" stroke="var(--teal)" stroke-dasharray="2 3"/>
+<circle cx="188.7" cy="56" r="3.5" fill="var(--teal)"/>
+<line x1="190.1" y1="60" x2="190.1" y2="122" stroke="var(--clay)" stroke-dasharray="2 3"/>
+<circle cx="190.1" cy="56" r="3.5" fill="var(--clay)"/>
+<line x1="258.9" y1="60" x2="258.9" y2="122" stroke="var(--clay)" stroke-dasharray="2 3"/>
+<circle cx="258.9" cy="56" r="3.5" fill="var(--clay)"/>
+<line x1="270.8" y1="60" x2="270.8" y2="122" stroke="var(--teal)" stroke-dasharray="2 3"/>
+<circle cx="270.8" cy="56" r="3.5" fill="var(--teal)"/>
+<text class="small" x="16" y="100">答 3 次</text><text class="small" x="16" y="128">答 5 次 ✓</text>
+<text class="caps" x="16" y="196">放大 120–145 s</text>
+<line class="edge" x1="72" y1="312" x2="320" y2="312"/>
+<line class="edge" x1="72" y1="309" x2="72" y2="315"/><text class="small mid" x="72" y="326">120 s</text>
+<line class="edge" x1="191" y1="309" x2="191" y2="315"/><text class="small mid" x="191" y="326">132 s</text>
+<line class="edge" x1="320" y1="309" x2="320" y2="315"/><text class="small mid" x="320" y="326">145 s</text>
+<line x1="72" y1="258" x2="320" y2="258" stroke="var(--line)"/>
+<rect x="72" y="255" width="248" height="6" rx="2" fill="var(--stone)"/>
+<rect x="141.4" y="251" width="158.7" height="14" rx="2" fill="var(--blue)"/>
+<line x1="72" y1="288" x2="320" y2="288" stroke="var(--line)"/>
+<rect x="72" y="285" width="248" height="6" rx="2" fill="var(--stone)"/>
+<rect x="72" y="285" width="248" height="6" rx="2" fill="var(--stone)"/>
+<rect x="151.4" y="281" width="138.9" height="14" rx="2" fill="var(--blue)"/>
+<rect x="153.3" y="249" width="9.9" height="18" rx="2" fill="none" stroke="var(--ink)" stroke-width="1.5"/>
+<rect x="183.1" y="249" width="9.9" height="18" rx="2" fill="none" stroke="var(--ink)" stroke-width="1.5"/>
+<line x1="161.3" y1="234" x2="161.3" y2="296" stroke="var(--teal)" stroke-dasharray="2 3"/>
+<g class="node teal"><circle cx="161.3" cy="226" r="8"/><text class="mid" x="161.3" y="226" font-size="11">1</text></g>
+<line x1="191" y1="234" x2="191" y2="296" stroke="var(--teal)" stroke-dasharray="2 3"/>
+<g class="node teal"><circle cx="191" cy="226" r="8"/><text class="mid" x="191" y="226" font-size="11">2</text></g>
+<line x1="210.9" y1="234" x2="210.9" y2="296" stroke="var(--clay)" stroke-dasharray="2 3"/>
+<g class="node clay"><circle cx="210.9" cy="226" r="8"/><text class="mid" x="210.9" y="226" font-size="11">3</text></g>
+<text class="small" x="16" y="258">Argon</text><text class="small" x="16" y="288">Astra</text>
+<text class="caps" x="16" y="340">放大 225–258 s</text>
+<line class="edge" x1="72" y1="456" x2="320" y2="456"/>
+<line class="edge" x1="72" y1="453" x2="72" y2="459"/><text class="small mid" x="72" y="470">225 s</text>
+<line class="edge" x1="184.7" y1="453" x2="184.7" y2="459"/><text class="small mid" x="184.7" y="470">240 s</text>
+<line class="edge" x1="320" y1="453" x2="320" y2="459"/><text class="small mid" x="320" y="470">258 s</text>
+<line x1="72" y1="402" x2="320" y2="402" stroke="var(--line)"/>
+<rect x="72" y="399" width="248" height="6" rx="2" fill="var(--stone)"/>
+<rect x="109.6" y="395" width="52.6" height="14" rx="2" fill="var(--blue)"/>
+<rect x="244.8" y="395" width="45.1" height="14" rx="2" fill="var(--blue)"/>
+<line x1="72" y1="432" x2="320" y2="432" stroke="var(--line)"/>
+<rect x="72" y="429" width="248" height="6" rx="2" fill="var(--stone)"/>
+<rect x="72" y="429" width="248" height="6" rx="2" fill="var(--stone)"/>
+<rect x="109.6" y="429" width="172.8" height="6" rx="2" fill="var(--stone)"/>
+<rect x="250.1" y="393" width="24.8" height="18" rx="2" fill="none" stroke="var(--ink)" stroke-width="1.5"/>
+<line x1="124.6" y1="378" x2="124.6" y2="440" stroke="var(--clay)" stroke-dasharray="2 3"/>
+<g class="node clay"><circle cx="124.6" cy="370" r="8"/><text class="mid" x="124.6" y="370" font-size="11">4</text></g>
+<line x1="252.4" y1="378" x2="252.4" y2="440" stroke="var(--teal)" stroke-dasharray="2 3"/>
+<g class="node teal"><circle cx="252.4" cy="370" r="8"/><text class="mid" x="252.4" y="370" font-size="11">5</text></g>
+<text class="small" x="16" y="402">Argon</text><text class="small" x="16" y="432">Astra</text>
+<rect x="16" y="484" width="18" height="6" rx="2" fill="var(--stone)"/><text class="small" x="40" y="487">≤1 帧/秒浏览</text>
+<rect x="170" y="480" width="18" height="14" rx="2" fill="var(--blue)"/><text class="small" x="194" y="487">2–6 帧/秒细看</text>
+<rect x="16" y="508" width="16" height="16" rx="2" fill="none" stroke="var(--ink)" stroke-width="1.5"/><text class="small" x="40" y="516">Argon 数到的指向</text>
+<circle cx="24" cy="542" r="6" fill="var(--clay)"/><text class="small" x="40" y="542">在 Argon 细看的窗口里，没数到</text>
+</svg>

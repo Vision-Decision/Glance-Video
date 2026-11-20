@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+# Scripts-only project: `pip install -e .` pulls in the model (glance-core) and the scan engine (glance-engine).
+[project]
+name = "glance-video"
+version = "0.1.0"
+description = "Glance-Video training, the vdmscan tool and the Video-Index agent harness."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+dependencies = [
+    "glance-core @ git+https://github.com/Vision-Decision/glance-core@v0.2.0",
+    "glance-engine @ git+https://github.com/Vision-Decision/glance-engine@v0.2.0",
+]
+
+[project.optional-dependencies]
+gpu = ["glance-core[gpu] @ git+https://github.com/Vision-Decision/glance-core@v0.2.0"]
+
+[project.urls]
+Repository = "https://github.com/Vision-Decision/glance-video"
+
+[tool.setuptools]
+packages = []

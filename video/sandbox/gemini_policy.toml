@@ -1,0 +1,11 @@
+# Sandbox policy for Gemini CLI runs (the official runs used a policy file "benchcheck.toml"; its content is not
+# published). The network is closed anyway; this also removes the web tools.
+[[rule]]
+toolName = "web_fetch"
+decision = "deny"
+priority = 900
+
+[[rule]]
+toolName = "google_web_search"
+decision = "deny"
+priority = 900

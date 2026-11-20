@@ -1,0 +1,193 @@
+#!/usr/bin/env python3
+"""vdm1: clip-level visual checks for video questions (client; the model runs behind $VDM1_URL).
+
+  vdm1 count  VIDEO "Does the person ... in this clip?"  [--in t0-t1] [--backend glance|qwen]
+  vdm1 find   VIDEO "Does ... happen in this clip?"     [--in t0-t1] [--top 5]
+  vdm1 verify VIDEO --at t0-t1 "Does ... happen in this clip?"
+  vdm1 choose VIDEO --question Q --options "A. ..." "B. ..." [--clips 8] [--in t0-t1]
+
+A clip = 4 consecutive frames at 2 fps (2 s), stride 1 s. Each clip gets P(yes) for the question, so questions
+about actions and changes ("does a person places a cup on the table in this clip?") work, unlike single frames.
+Count = number of separated high-P(yes) segments (hysteresis 0.5/0.35, segments < 2 s apart merged); the output
+also gives the count under 9 threshold/gap settings. Output: JSON on stdout, then one '# ...' summary line.
+Deps: stdlib + numpy + Pillow + ffmpeg/ffprobe.
+"""
+import argparse, base64, io, json, os, subprocess, sys, time, urllib.request
+
+import numpy as np
+from PIL import Image
+
+URL = os.environ.get("VDM1_URL", "http://vi-gateway:8080/vdm1").rstrip("/")
+FPS, K, STRIDE, SHORT = 2.0, 4, 1.0, 448
+MAX_CLIPS = int(os.environ.get("VDM1_MAX_CLIPS", "900"))
+CHUNK = 16
+NOTES, COST = [], {"clips_sent": 0, "server_sec": 0.0}
+
+
+def die(msg):
+    print(json.dumps({"error": msg}))
+    print(f"# error: {msg}")
+    sys.exit(1)
+
+
+def probe(path):
+    o = json.loads(subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                                   "stream=width,height:format=duration", "-of", "json", path],
+                                  capture_output=True, text=True).stdout)
+    s = o["streams"][0]
+    return float(o["format"]["duration"]), int(s["width"]), int(s["height"])
+
+
+def parse_range(r, dur):
+    if not r:
+        return 0.0, dur
+    a, b = r.split("-")
+    return max(0.0, float(a)), min(dur, float(b))
+
+
+def decode(path, t0, t1, fps):
+    dur, W, H = probe(path)
+    w, h = (SHORT, int(round(H * SHORT / W / 2)) * 2) if W <= H else (int(round(W * SHORT / H / 2)) * 2, SHORT)
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{t0}", "-t", f"{t1 - t0}", "-i", path, "-vf",
+                          f"fps={fps},scale={w}:{h}", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                         capture_output=True).stdout
+    n = len(raw) // (w * h * 3)
+    arr = np.frombuffer(raw[: n * w * h * 3], np.uint8).reshape(n, h, w, 3)
+    return [t0 + i / fps for i in range(n)], arr
+
+
+def jpeg(a):
+    b = io.BytesIO()
+    Image.fromarray(a).save(b, "JPEG", quality=85)
+    return base64.b64encode(b.getvalue()).decode()
+
+
+def post(body):
+    req = urllib.request.Request(URL + "/score_clips", json.dumps(body).encode(), {"content-type": "application/json"})
+    try:
+        r = json.load(urllib.request.urlopen(req, timeout=900))
+    except Exception as e:
+        die(f"vdm1 server unreachable: {e}")
+    if "error" in r:
+        die(r["error"])
+    COST["server_sec"] += r.get("sec", 0)
+    return r["results"]
+
+
+def clip_curve(path, rng, question, backend):
+    dur, _, _ = probe(path)
+    t0, t1 = parse_range(rng, dur)
+    fps = FPS
+    nclips = (t1 - t0) / STRIDE
+    if nclips > MAX_CLIPS:  # keep 4 frames/clip, widen the stride
+        fps = FPS * MAX_CLIPS / nclips
+        NOTES.append(f"span {t1 - t0:.0f}s > {MAX_CLIPS} clips: sampled at {fps:.2f} fps (clips cover {K / fps:.1f}s)")
+    times, arr = decode(path, t0, t1, fps)
+    step = max(1, int(round(STRIDE * fps)))
+    starts = list(range(0, max(1, len(arr) - K + 1), step if fps >= FPS else 1))
+    ts, ps = [], []
+    enc = [jpeg(a) for a in arr]
+    for i in range(0, len(starts), CHUNK):
+        ss = starts[i:i + CHUNK]
+        clips = [enc[s:s + K] for s in ss]
+        ps += post({"question": question, "kind": "yesno", "backend": backend, "clips": clips})
+        ts += [float(np.mean(times[s:s + K])) for s in ss]
+        COST["clips_sent"] += len(clips)
+    return ts, ps
+
+
+def segments(ts, ps, hi=0.5, lo=0.35, gap=2.0):
+    segs, on, start, prev = [], False, None, None
+    for t, p in zip(ts, ps):
+        if not on and p >= hi:
+            on, start = True, t
+        elif on and p < lo:
+            segs.append([start, prev]); on = False
+        prev = t
+    if on:
+        segs.append([start, ts[-1]])
+    out = []
+    for s in segs:
+        if out and s[0] - out[-1][1] < gap:
+            out[-1][1] = s[1]
+        else:
+            out.append(s)
+    return out
+
+
+def cmd_count(a):
+    ts, ps = clip_curve(a.video, a.inn, a.question, a.backend)
+    segs = segments(ts, ps)
+    dist = {f"hi{h}_gap{g:g}": len(segments(ts, ps, h, h - 0.15, g)) for h in (0.3, 0.5, 0.7) for g in (1.0, 2.0, 4.0)}
+    out = {"cmd": "count", "question": a.question, "count": len(segs), "count_distribution": dist,
+           "events": [{"start": round(s, 1), "end": round(e, 1), "peak_p": round(max(p for t, p in zip(ts, ps) if s <= t <= e), 3)}
+                      for s, e in segs], "n_clips": len(ps), "notes": NOTES, "cost": COST}
+    print(json.dumps(out))
+    print(f"# count: {len(segs)} (distribution {sorted(set(dist.values()))}); events at "
+          + ", ".join(f"{s:.0f}-{e:.0f}s" for s, e in segs[:20]))
+
+
+def cmd_find(a):
+    ts, ps = clip_curve(a.video, a.inn, a.question, a.backend)
+    segs = segments(ts, ps, a.thr, a.thr - 0.15)
+    rank = sorted(({"start": round(s, 1), "end": round(e, 1),
+                    "peak_p": round(max(p for t, p in zip(ts, ps) if s <= t <= e), 3)} for s, e in segs),
+                  key=lambda d: -d["peak_p"])[: a.top]
+    out = {"cmd": "find", "question": a.question, "intervals": rank, "n_intervals": len(segs),
+           "max_p": round(max(ps), 3), "max_t": round(ts[int(np.argmax(ps))], 1), "n_clips": len(ps),
+           "notes": NOTES, "cost": COST}
+    print(json.dumps(out))
+    print(f"# find: {len(segs)} interval(s); top: " + ", ".join(f"{d['start']}-{d['end']}s p={d['peak_p']}" for d in rank))
+
+
+def cmd_verify(a):
+    ts, ps = clip_curve(a.video, a.at, a.question, a.backend)
+    out = {"cmd": "verify", "question": a.question, "p_yes_mean": round(float(np.mean(ps)), 3),
+           "p_yes_max": round(float(np.max(ps)), 3), "per_clip": [[round(t, 1), round(p, 3)] for t, p in zip(ts, ps)],
+           "notes": NOTES, "cost": COST}
+    print(json.dumps(out))
+    print(f"# verify: mean p_yes={out['p_yes_mean']} max={out['p_yes_max']} over {len(ps)} clips")
+
+
+def cmd_choose(a):
+    dur, _, _ = probe(a.video)
+    t0, t1 = parse_range(a.inn, dur)
+    opts = [o.split(". ", 1)[1] if len(o) > 2 and o[1:3] == ". " else o for o in a.options]
+    letters = [o[0] if len(o) > 2 and o[1:3] == ". " else chr(65 + i) for i, o in enumerate(a.options)]
+    clips = []
+    for c in np.linspace(t0, max(t0, t1 - K / FPS), a.clips):
+        _, arr = decode(a.video, float(c), float(c) + K / FPS, FPS)
+        if len(arr):
+            clips.append([jpeg(x) for x in arr[:K]] + [jpeg(arr[-1])] * (K - min(K, len(arr))))
+    P = np.array(post({"question": a.question, "kind": "choice", "options": opts, "backend": a.backend, "clips": clips}))
+    m = P.mean(0)
+    out = {"cmd": "choose", "mean_prob": {l: round(float(v), 3) for l, v in zip(letters, m)},
+           "answer": letters[int(m.argmax())], "n_clips": len(clips), "notes": NOTES + [
+               "each 2-s clip answers the question alone; probabilities averaged over clips. On Video-Index v1.1 "
+               "frame/clip-level evidence is often anti-informative (items were selected against frame-viewing agents)"],
+           "cost": COST}
+    print(json.dumps(out))
+    print(f"# choose: {out['answer']} {out['mean_prob']}")
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="vdm1", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sp = ap.add_subparsers(dest="cmd", required=True)
+    for name in ("count", "find"):
+        p = sp.add_parser(name); p.add_argument("video"); p.add_argument("question")
+        p.add_argument("--in", dest="inn"); p.add_argument("--backend", default="glance", choices=["glance", "qwen"])
+        if name == "find":
+            p.add_argument("--top", type=int, default=5); p.add_argument("--thr", type=float, default=0.5)
+    v = sp.add_parser("verify"); v.add_argument("video"); v.add_argument("question"); v.add_argument("--at", required=True)
+    v.add_argument("--backend", default="glance", choices=["glance", "qwen"])
+    c = sp.add_parser("choose"); c.add_argument("video"); c.add_argument("--question", required=True)
+    c.add_argument("--options", nargs="+", required=True); c.add_argument("--clips", type=int, default=8)
+    c.add_argument("--in", dest="inn"); c.add_argument("--backend", default="glance", choices=["glance", "qwen"])
+    a = ap.parse_args()
+    t = time.time()
+    {"count": cmd_count, "find": cmd_find, "verify": cmd_verify, "choose": cmd_choose}[a.cmd](a)
+    print(f"# cost: {COST['clips_sent']} clips, server {COST['server_sec']:.1f}s, wall {time.time() - t:.1f}s", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()
