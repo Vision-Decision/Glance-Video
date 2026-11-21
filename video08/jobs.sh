@@ -5,7 +5,7 @@
 # M7 / M8 / throughput run on the Colab G4 (run_g4.sh).
 GV=$HOME/glance-video-exp; Q=$GV/code/video08/q.sh; O=$GV/out; V=$GV/data/raw/charades/Charades_v1_480
 j() { printf "%s\t%s\t%s\t%s\t%s\n" "glance-video-$1" any "$2" "$3" "$4"; }
-chain() { local prev=$1; shift; while [ $# -gt 0 ]; do j "$1" "$2" "$prev" "$3"; prev=glance-video-$1; shift 3; done; }
+chain() { local dep=$1; shift; while [ $# -gt 0 ]; do j "$1" "$2" "$dep" "$3"; shift 3; done; }  # parallel, all after $dep
 C=glance-video-cache256
 {
 echo "# glance-video 0.8B (owner: video agent). NAME GPU MEM_GB AFTER COMMAND; logs in ~/glance-queue/logs"
@@ -51,10 +51,5 @@ chain $C \
   deploy-recent4-fps2 6 "$Q evals.deploy --split eval --fps 2 --arm recent4 --streams 12 --minutes 10 --rules 16 --layers '' --out $O/deploy" \
   probe-train-fps2 8 "$Q evals.deploy --split train --fps 2 --arm none --streams 40 --minutes 10 --out $O/deploy_train" \
   probe-train-fps30 10 "$Q evals.deploy --split train --fps 30 --arm none --streams 16 --minutes 10 --out $O/deploy_train"
-chain glance-video-s1a \
-  p3-s1a-fps2 16 "$Q evals.p3_eval --ckpt $O/p3/s1a/ckpt_final.pt --fps 2 --n 300 --out $O/p3/eval_s1a_fps2.jsonl" \
-  p3-s1a-fps30 20 "$Q evals.p3_eval --ckpt $O/p3/s1a/ckpt_final.pt --fps 30 --n 300 --out $O/p3/eval_s1a_fps30.jsonl"
-chain glance-video-s1b-lora16 \
-  p3-s1b-fps2 16 "$Q evals.p3_eval --ckpt $O/p3/s1b_lora16/ckpt_final.pt --fps 2 --n 300 --out $O/p3/eval_s1b_fps2.jsonl" \
-  p3-s1b-fps30 20 "$Q evals.p3_eval --ckpt $O/p3/s1b_lora16/ckpt_final.pt --fps 30 --n 300 --out $O/p3/eval_s1b_fps30.jsonl"
+# P3 evals run on the G4 only (head and generative in one process, same hardware): see g4_day.sh
 } > $HOME/glance-queue/glance-video.tsv.tmp && mv $HOME/glance-queue/glance-video.tsv.tmp $HOME/glance-queue/glance-video.tsv
