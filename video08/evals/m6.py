@@ -20,7 +20,7 @@ from video08 import vio, feed
 ap = argparse.ArgumentParser()
 ap.add_argument("--bench", required=True); ap.add_argument("--arm", default="stream"); ap.add_argument("--fps", type=float, default=2)
 ap.add_argument("--n", type=int, default=200); ap.add_argument("--out", required=True); ap.add_argument("--data", default=os.path.expanduser("~/glance-video-exp/data"))
-ap.add_argument("--chunk", type=int, default=0, help="groups per LM forward (0: 0.5 s worth)"); ap.add_argument("--size", type=int, default=256)
+ap.add_argument("--chunk", type=int, default=0, help="groups per LM forward (0: 0.5 s worth)"); ap.add_argument("--size", default="256", help="S (square) or WxH, multiples of 32")
 ap.add_argument("--full_s", type=float, default=4.0); ap.add_argument("--sub_s", type=float, default=60.0)
 ap.add_argument("--max_len", type=float, default=180.0, help="clip videos longer than this (s)")
 ap.add_argument("--seed", type=int, default=0)

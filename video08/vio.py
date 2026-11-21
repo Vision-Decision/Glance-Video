@@ -15,9 +15,19 @@ def probe(path):
         return fps, dur, s.codec_context.width, s.codec_context.height
 
 
+def wh(size):
+    """size: int (square) or 'WxH' / (W, H); both multiples of 32 (one LM token per 32x32 after the 2x2 merge)"""
+    if isinstance(size, str):
+        w, h = size.lower().split("x") if "x" in size.lower() else (size, size)
+        return int(w), int(h)
+    if isinstance(size, (tuple, list)):
+        return int(size[0]), int(size[1])
+    return int(size), int(size)
+
+
 def cached(path, size=256):
     """the once-decoded 256x256 copy from data/cache.py, if present (same timestamps)"""
-    if size != 256 or "/raw/" not in path:
+    if wh(size) != (256, 256) or "/raw/" not in path:
         return path
     c = path.replace("/raw/", "/cache256/", 1)
     return c if os.path.exists(c) else path
@@ -25,7 +35,7 @@ def cached(path, size=256):
 
 def frames_npy(path, fps, size=256):
     """the decoded uint8 frame cache for this fps (data/cache.py npy part), if present"""
-    if size != 256 or "/raw/" not in path:
+    if wh(size) != (256, 256) or "/raw/" not in path:
         return None
     c = os.path.splitext(path.replace("/raw/", f"/cache_fps{fps:g}/", 1))[0] + ".npy"
     return c if os.path.exists(c) else None
@@ -45,7 +55,8 @@ def _decode(path, fps, size=256, t0=0.0, t1=None, threads=2):
     """-> (frames uint8 (T,3,size,size) torch, times np.array): for each grid time k/fps in [t0, t1) the latest source
     frame shown at that time (frames repeat if the source is slower than fps). Frames are scaled by swscale on decode."""
     import av
-    path = cached(path, size)
+    W, H = wh(size)
+    path = cached(path, size) if W == H else path  # the 256 cache is square: other aspect ratios read the source
     ts, imgs = [], []
     with av.open(path) as c:
         s = c.streams.video[0]; s.thread_type = "AUTO"; s.thread_count = threads
@@ -60,9 +71,9 @@ def _decode(path, fps, size=256, t0=0.0, t1=None, threads=2):
                 break
             if t < t0 - 1.0:
                 continue
-            ts.append(t); imgs.append(fr.to_ndarray(format="rgb24", width=size, height=size))
+            ts.append(t); imgs.append(fr.to_ndarray(format="rgb24", width=W, height=H))
     if not imgs:
-        return torch.zeros(0, 3, size, size, dtype=torch.uint8), np.zeros(0)
+        return torch.zeros(0, 3, H, W, dtype=torch.uint8), np.zeros(0)
     ts = np.array(ts); end = ts[-1] + (ts[-1] - ts[-2] if len(ts) > 1 else 1 / fps)
     hi = end if t1 is None else min(end, t1)
     grid = np.arange(math.ceil(t0 * fps - 1e-6), math.ceil(hi * fps - 1e-6)) / fps

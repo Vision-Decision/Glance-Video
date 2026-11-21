@@ -25,8 +25,17 @@ def fetch(repo, out, big_min=200 << 20, conns=16, allow=None):
     files = repo_files(repo)
     small = [p for p, s in files if s < big_min and (allow is None or any(p.endswith(a) for a in allow))]
     if small:  # file by file: names like "x_[13].mp4" are glob patterns to allow_patterns
-        with ThreadPoolExecutor(16) as ex:
-            list(ex.map(lambda p: hf_hub_download(repo, p, repo_type="dataset", local_dir=out, endpoint=EP), small))
+        import time as _t
+
+        def get(p):
+            for k in range(10):
+                try:
+                    return hf_hub_download(repo, p, repo_type="dataset", local_dir=out, endpoint=EP)
+                except Exception as e:
+                    _t.sleep(min(60, 3 * 2 ** k))
+            print("gave up", repo, p, flush=True)
+        with ThreadPoolExecutor(8) as ex:
+            list(ex.map(get, small))
     for p, s in files:
         if s >= big_min and (allow is None or any(p.endswith(a) for a in allow)):
             big(repo, p, f"{out}/{p}", conns); print("got", repo, p, flush=True)

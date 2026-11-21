@@ -30,3 +30,14 @@ No Video-Index video or question is used for training, tuning, or sent to any ex
 | RepCount-A (LLSP) | hf-mirror `lmms-lab-eval/repcounta-lance` | no licence stated; academic use only | train (minus pHash-contaminated clips): count head; test: eval only |
 | PushupBench | hf-mirror `anonymousatom/pushupbench` | see dataset card (research) | evaluation only |
 | Qwen3.5-0.8B | hf-mirror `Qwen/Qwen3.5-0.8B` | Apache-2.0 | frozen backbone |
+
+## 排期（2026-11-22 更新）
+
+| 时间 | 内容 | 机器 |
+|---|---|---|
+| 进行中 | S1a / S1b（1600 步 × 4 段）→ P3 评测（fps2 / fps30） | a100 队列 |
+| 进行中 | M7 跑满 60 次，M8 用修好的窗口重跑，严格逐帧延迟与 N 问吞吐重测 | Colab G4 |
+| 进行中 | M6 剩余臂、部署协议、探针特征；R1 零样本网格 | a100 队列（lane E1–E3） |
+| 进行中 | B0 数据：HC-STVG v2、MeViS、LaSOT 子集、RefCOCO 标注 | a100 CPU |
+| 约 10:00 后 | B1 框头（从头训 vs 图像 v1.4_D_0.8B 初始化），随后 B2、B3、B4 | a100 队列 |
+| S1 出结果后 | P4 设计（`P4_DESIGN.md`：写入门控 vs 加长 KV）和 R2 混合训练，等确认后开训 | — |
