@@ -59,6 +59,7 @@ class Readout(nn.Module):
         self.choice_q = mlp(Din, 512); self.choice_k = mlp(Din, 512)
 
     def forward(self, st, qids, opt_ends=None, rows=None):
+        stream_rows = rows  # which batched stream each question reads (None: stream 0)
         """st: Stream (snapshot = current state). qids: list of token-id lists. opt_ends: per row list of token indices
         (inside the question) whose hidden states are the options for the choice head. Returns dict of head outputs."""
         N = len(qids); dev = st.dev; K = self.K
@@ -71,7 +72,7 @@ class Readout(nn.Module):
         rows = torch.arange(N, device=dev)
         idx = torch.tensor(lens, device=dev)[:, None] + torch.arange(K, device=dev)[None]
         E = E.index_put((rows[:, None].expand(-1, K), idx), lat[None].expand(N, -1, -1))
-        cache = st.fork(N, rows)
+        cache = st.fork(N, stream_rows)
         pos = torch.arange(st.pos, st.pos + Lmax, device=dev).view(1, 1, -1).expand(3, N, -1)
         out = st.lm(inputs_embeds=E, position_ids=pos, past_key_values=cache, use_cache=True, output_hidden_states=True)
         hs = out.hidden_states
