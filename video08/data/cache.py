@@ -1,7 +1,8 @@
 """Decode every source video ONCE and store it as 256x256 H.264 (CRF 17, tune fastdecode, original timestamps) under
 DATA/cache256/<path relative to DATA/raw>. vio.decode reads the cached file when it exists: decoding 256x256 costs a
 fraction of 480p / 1080p, so every later eval arm and every training epoch skips the expensive decode.
-python video08/data/cache.py DATA [workers]   (order: Charades test, Charades train, PushupBench, RepCount)"""
+python video08/data/cache.py DATA [workers] [eval|train]   eval: Charades test + PushupBench + RepCount test;
+train: Charades train/probe_val + RepCount train/val. Every encoder / decoder is single-threaded (workers = cores used)."""
 import glob, json, os, sys, time
 from multiprocessing import Pool
 import av
@@ -23,7 +24,7 @@ def one(p):
             s = src.streams.video[0]; s.thread_count = 1
             rate = s.average_rate or s.guessed_rate or 30
             v = dst.add_stream("libx264", rate=rate); v.width = v.height = S; v.pix_fmt = "yuv420p"
-            v.time_base = s.time_base; v.options = {"crf": "17", "preset": "veryfast", "tune": "fastdecode", "g": "30"}
+            v.time_base = s.time_base; v.options = {"crf": "17", "preset": "veryfast", "tune": "fastdecode", "g": "30", "threads": "1"}; v.thread_count = 1
             v.codec_context.time_base = s.time_base
             last = None
             for fr in src.decode(s):
@@ -47,9 +48,14 @@ if __name__ == "__main__":
     os.nice(10)
     idx = f"{R}/idx"; rows = {r["id"]: r for r in map(json.loads, open(f"{idx}/charades.jsonl"))}
     sp = json.load(open(f"{idx}/splits.json"))
-    paths = [rows[i]["path"] for i in sp["eval"]] + [rows[i]["path"] for i in sp["train"] + sp["probe_val"]]
-    paths += sorted(glob.glob(f"{R}/raw/pushup/*.mp4"))
-    for s_ in ("test", "validation", "train"):
+    part = sys.argv[3] if len(sys.argv) > 3 else "eval"
+    if part == "eval":
+        paths = [rows[i]["path"] for i in sp["eval"]] + sorted(glob.glob(f"{R}/raw/pushup/*.mp4"))
+        splits_ = ("test",)
+    else:
+        paths = [rows[i]["path"] for i in sp["train"] + sp["probe_val"]]
+        splits_ = ("validation", "train")
+    for s_ in splits_:
         f = f"{idx}/repcount_{s_}.jsonl"
         if os.path.exists(f):
             paths += [json.loads(l)["path"] for l in open(f)]
