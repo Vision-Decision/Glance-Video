@@ -26,6 +26,7 @@ ap.add_argument("--size", type=int, default=256)
 ap.add_argument("--batch", type=int, default=8, help="videos per step, streamed in lockstep (same fps)")
 ap.add_argument("--max_len", type=float, default=60.0)
 ap.add_argument("--qbatch", type=int, default=8, help="question rows per forward/backward")
+ap.add_argument("--write_s", type=float, default=0.5, help="seconds of frames per stream write (KV is evicted per write)")
 a = ap.parse_args()
 os.makedirs(a.out, exist_ok=True)
 torch.manual_seed(a.seed); random.seed(a.seed)
@@ -136,7 +137,7 @@ for batch in batches():
     if step >= a.steps or stop["flag"]:
         break
     t_got = time.time(); tread = [0.0]
-    fps = batch["fps"]; V = batch["vids"]; chunk = max(1, int(round(fps * 0.5)))
+    fps = batch["fps"]; V = batch["vids"]; chunk = max(1, int(round(fps * a.write_s)))
     plans = []
     for v in V:
         rng = random.Random(v["seed"]); dur = float(v["times"][-1])

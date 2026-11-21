@@ -9,8 +9,8 @@ chain() { local prev=$1; shift; while [ $# -gt 0 ]; do j "$1" "$2" "$prev" "$3";
 C=glance-video-cache256
 {
 echo "# glance-video 0.8B (owner: video agent). NAME GPU MEM_GB AFTER COMMAND; logs in ~/glance-queue/logs"
-j s1a 12 - "$Q train_s1 --out $O/p3/s1a --steps 1600 --batch 4 --qbatch 4 --workers 6"
-j s1b-lora16 14 - "$Q train_s1 --out $O/p3/s1b_lora16 --steps 1600 --batch 4 --qbatch 4 --lora 16 --workers 6"
+j s1a 16 - "$Q train_s1 --out $O/p3/s1a --steps 1200 --batch 4 --qbatch 8 --times 2 --write_s 2 --workers 6"
+j s1b-lora16 18 - "$Q train_s1 --out $O/p3/s1b_lora16 --steps 1200 --batch 4 --qbatch 8 --times 2 --write_s 2 --lora 16 --workers 6"
 j upload 0 - "$GV/code/video08/upload_loop.sh"
 j cache256 0 - "$Q data.cache $GV/data 10 eval"
 j cache256-train 0 $C "$Q data.cache $GV/data 24 train"
