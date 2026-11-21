@@ -8,7 +8,7 @@ j smoke 6 - "$Q tests.test_stream cuda"
 # --- P3 smoke (short) then the two S1 arms
 j upload 0 - "$GV/code/video08/upload_loop.sh"
 j prep-rep 0 - "$GV/code/video08/data/prep_rep.sh"
-j s1-smoke 14 glance-video-prep-rep "$Q train_s1 --out $O/p3/smoke --steps 30 --save 60 --workers 2"
+j s1-smoke 10 glance-video-prep-rep "$Q train_s1 --out $O/p3/smoke --steps 30 --save 60 --workers 2"
 j s1a 14 glance-video-s1-smoke "$Q train_s1 --out $O/p3/s1a --steps 4000"
 # --- P2
 for b in presence sta; do for f in 2 30; do

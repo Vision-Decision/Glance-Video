@@ -14,7 +14,7 @@ next position would pass `max_pos`, every retained key after the sink is rotated
 oldest retained group ("continuous RoPE"), so relative positions inside the window are unchanged and positions stay in
 the trained range for hour-long streams.
 """
-import copy, math, time
+import copy, math, time, types
 import torch
 import torch.nn.functional as F
 
@@ -41,6 +41,11 @@ def patchify(frames, patch=16, tp=2, merge=2):
     x = x.reshape(G * gh * gw, C * tp * patch * patch)
     grid = torch.tensor([[1, gh, gw]] * G, device=frames.device)
     return x, grid
+
+
+def _assign_state(self, recurrent_states, state_idx=0, **kw):
+    self.recurrent_states[state_idx] = recurrent_states
+    return recurrent_states
 
 
 class Stream:
@@ -203,6 +208,9 @@ class Stream:
             for a in ("is_conv_states_initialized", "is_recurrent_states_initialized", "has_previous_state", "conv_kernel_size"):
                 if hasattr(L, a):
                     setattr(M, a, dict(getattr(L, a)))
+            if hasattr(L, "recurrent_states"):
+                # assign instead of the in-place copy_: the readout forward may need the old state for backward
+                M.update_recurrent_state = types.MethodType(_assign_state, M)
             new.layers.append(M)
         return new
 
