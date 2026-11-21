@@ -92,9 +92,55 @@ def native_answer(frames, times, q, gen):
     return float(p_yes(model(**inp, logits_to_keep=1).logits[:, -1].float(), yid, nid)[0])
 
 
-for it in items():
-    if it["id"] in done:
-        continue
+ap2 = None
+BS = int(os.environ.get("GV_BATCH", "8"))
+
+
+def dec(it):
+    return vio.decode(it["path"], a.fps, a.size, 0.0, a.max_len)
+
+
+def run_stream_batch(batch, decoded):
+    """batched lockstep streams (same fps grid); each video answers at its own end"""
+    vids, recs = [], []
+    for it, (frames, times) in zip(batch, decoded):
+        if len(frames) < 2:
+            continue
+        vids.append((frames, times)); recs.append(dict(id=it["id"], arm=a.arm, fps=a.fps, n_groups=len(frames), dur=float(times[-1]), res=[], it=it))
+    if not vids:
+        return []
+    t0 = time.perf_counter()
+
+    def on_end(i, row):
+        rec = recs[i]; qs = rec["it"]["qs"]; rec.update(kv=st.kv_len(), pos=st.pos)
+        yn = [q for q in qs if q["kind"] == "yn"]
+        if yn:
+            ps = p_yes(st.ask([q["q"] for q in yn], rows=[row] * len(yn))["logits"], yid, nid).tolist()
+            rec["res"] += [dict(q, p=p) for q, p in zip(yn, ps)]
+        for q in qs:
+            if q["kind"] == "gen":
+                rec["res"].append(dict(q, ans=st.generate(q["q"], max_new=24, row=row)))
+    tm = feed.feed_batch(st, vids, chunk, on_end)
+    wall = time.perf_counter() - t0
+    for r in recs:
+        r.pop("it"); r.update(wall_s=wall / len(recs), batch=len(recs), vit_s=tm["vit"] / len(recs), lm_s=tm["lm"] / len(recs))
+    return recs
+
+
+todo = [it for it in items() if it["id"] not in done]
+if a.arm == "stream" and BS > 1:
+    import concurrent.futures as cf
+    todo.sort(key=lambda it: it.get("length", 0))  # similar lengths in one batch: few rows idle
+    ex = cf.ThreadPoolExecutor(2); nxt = [ex.submit(dec, it) for it in todo[:BS]]
+    for b in range(0, len(todo), BS):
+        cur = [f.result() for f in nxt]
+        nxt = [ex.submit(dec, it) for it in todo[b + BS:b + 2 * BS]]  # decode the next batch while this one runs
+        for rec in run_stream_batch(todo[b:b + BS], cur):
+            fo.write(json.dumps(rec) + "\n")
+        fo.flush()
+    print("done", a); raise SystemExit(0)
+
+for it in todo:
     t0 = time.perf_counter()
     frames, times = vio.decode(it["path"], a.fps, a.size, 0.0, a.max_len)
     if len(frames) < 2:

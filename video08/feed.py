@@ -38,3 +38,34 @@ def feed(st, frames, times, chunk=1, t_offset=0.0, prev=None, cb=None, every=Non
                     if ts[-1] + 1e-6 >= nxt:
                         cb(ts[-1]); nxt = (np.floor(ts[-1] / every + 1e-6) + 1) * every
     return (frames[-1] if T else prev), tm, out_feats
+
+
+def feed_batch(st, vids, chunk, on_end, on_step=None):
+    """B videos as one lockstep batched stream from t=0 (all on the same k/fps grid). vids: list of (frames, times).
+    on_end(i, row) is called right after video i's last group is written (row = its current batch row); the row is
+    then dropped. on_step(times_written, active_ids) after every write. Returns timing."""
+    st.reset(batch=len(vids))
+    active = list(range(len(vids))); pos = 0; tm = dict(vit=0.0, lm=0.0)
+    lens = [len(t) for _, t in vids]
+    while active:
+        c = min(chunk, min(lens[i] - pos for i in active))
+        prs = torch.stack([vio.pairs(vids[i][0][pos:pos + c], vids[i][0][pos - 1] if pos else None) for i in active])
+        t0 = time.perf_counter()
+        vis, grid = st.encode(prs.flatten(0, 1))
+        vis = vis.view(len(active), c, *vis.shape[1:])
+        t1 = time.perf_counter()
+        ts = [float(x) for x in vids[active[0]][1][pos:pos + c]]
+        st.write(vis, ts, grid)
+        tm["vit"] += t1 - t0; tm["lm"] += time.perf_counter() - t1
+        pos += c
+        if on_step is not None:
+            on_step(ts, active)
+        ended = [r for r, i in enumerate(active) if lens[i] == pos]
+        for r in ended:
+            on_end(active[r], r)
+        if ended:
+            keep = [r for r in range(len(active)) if r not in ended]
+            active = [active[r] for r in keep]
+            if active:
+                st.drop(keep)
+    return tm

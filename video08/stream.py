@@ -74,8 +74,11 @@ class Stream:
         self.reset()
 
     # ------------------------------------------------------------------ state
-    def reset(self, zero_state=False):
+    def reset(self, zero_state=False, batch=1):
+        """batch > 1: B streams in lockstep on the same time grid (identical token layout, so they share one forward;
+        rows that finish early are dropped with drop())."""
         from transformers.cache_utils import DynamicCache
+        self.B = batch
         self.cache = DynamicCache(config=self.cfg.text_config)
         self.pos = 0  # next position id
         self.meta_t = torch.empty(0, device=self.dev)  # per cached token: group time (-1 = sink / timestamp-free text)
@@ -97,7 +100,7 @@ class Stream:
         ids = torch.tensor([self.tok.encode(s, add_special_tokens=False)], device=self.dev)
         n = ids.shape[1]
         pos = torch.arange(self.pos, self.pos + n, device=self.dev)
-        self._forward(self.emb(ids), pos.view(1, 1, -1).expand(3, 1, -1))
+        self._forward(self.emb(ids).expand(self.B, -1, -1), pos.view(1, 1, -1).expand(3, self.B, -1))
         self.pos += n
         self.meta_t = torch.cat([self.meta_t, torch.full((n,), -1.0 if sink else t, device=self.dev)])
         self.meta_pos = torch.cat([self.meta_pos, pos])
@@ -118,9 +121,13 @@ class Stream:
     # ------------------------------------------------------------------ write
     @torch.no_grad()
     def write(self, vis, times, grid, return_feats=False):
-        """Write G frame groups (vis: (G, ntok, D) embeddings, times: list of G seconds) in ONE forward (G=1 is the strict
-        per-frame mode). Returns per-group pooled hidden states {layer: (G, D)} if return_feats."""
+        """Write G frame groups (vis: (G, ntok, D) embeddings, or (B, G, ntok, D) for a batched stream; times: list of G
+        seconds) in ONE forward (G=1 is the strict per-frame mode). Returns per-group pooled hidden states
+        {layer: (G, D)} (or (G, B, D) when batched) if return_feats."""
         gh, gw = grid
+        batched = vis.dim() == 4
+        if not batched:
+            vis = vis[None]
         if self.pos >= self.max_pos and not self.keep_all:
             self._rebase()
         embs, poss, mt, mp, spans = [], [], [], [], []
@@ -136,12 +143,14 @@ class Stream:
             embs.append(vs[None]); poss.append(torch.full((3, 1), p, device=self.dev)); p += 1
             r = torch.arange(gh, device=self.dev).repeat_interleave(gw); c = torch.arange(gw, device=self.dev).repeat(gh)
             s0 = sum(e.shape[0] for e in embs)
-            embs.append(vis[g]); poss.append(torch.stack([torch.full_like(r, p), p + r, p + c])); p += max(gh, gw)
+            embs.append(torch.zeros(gh * gw, vis.shape[-1], device=self.dev, dtype=vis.dtype)); poss.append(torch.stack([torch.full_like(r, p), p + r, p + c])); p += max(gh, gw)
             spans.append((s0, s0 + gh * gw))
             embs.append(ve[None]); poss.append(torch.full((3, 1), p, device=self.dev)); p += 1
             mt.append(torch.full((gh * gw + 2,), float(t), device=self.dev))
-        E = torch.cat(embs, 0)[None].to(self.dtype)
-        P = torch.cat(poss, 1)[:, None]
+        E = torch.cat(embs, 0)[None].to(self.dtype).expand(self.B, -1, -1).clone()
+        for g, (a, b) in enumerate(spans):
+            E[:, a:b] = vis[:, g].to(self.dtype)
+        P = torch.cat(poss, 1)[:, None].expand(3, self.B, -1)
         out = self._forward(E, P, want_hidden=return_feats)
         self.meta_t = torch.cat([self.meta_t] + mt)
         self.meta_pos = torch.cat([self.meta_pos, P[0, 0]])
@@ -151,7 +160,9 @@ class Stream:
         if return_feats:
             hs = out.hidden_states
             layers = self.readout_layers or (len(hs) - 1,)
-            feats = {L: torch.stack([hs[L][0, a:b].float().mean(0) for a, b in spans]) for L in layers}
+            feats = {L: torch.stack([hs[L][:, a:b].float().mean(1) for a, b in spans]) for L in layers}  # (G, B, D)
+            if not batched:
+                feats = {L: v[:, 0] for L, v in feats.items()}
         if not self.keep_all:
             self.evict()
         return feats
@@ -201,15 +212,17 @@ class Stream:
         self.rebases += 1
 
     # ------------------------------------------------------------------ read
-    def fork(self, n):
+    def fork(self, n, rows=None):
+        """copy of the cache with n rows; row i is stream rows[i] (default: all from stream 0)"""
+        rows = torch.zeros(n, dtype=torch.long, device=self.dev) if rows is None else torch.as_tensor(rows, device=self.dev)
         new = copy.copy(self.cache); new.layers = []
         for L in self.cache.layers:
             M = copy.copy(L)
             if isinstance(getattr(L, "keys", None), torch.Tensor) and L.keys.numel():
-                M.keys = L.keys.expand(n, -1, -1, -1).contiguous(); M.values = L.values.expand(n, -1, -1, -1).contiguous()
+                M.keys = L.keys.index_select(0, rows); M.values = L.values.index_select(0, rows)
             for a in ("conv_states", "recurrent_states"):
                 if hasattr(L, a):
-                    setattr(M, a, {k: (v.expand(n, *v.shape[1:]).clone() if v is not None else None) for k, v in getattr(L, a).items()})
+                    setattr(M, a, {k: (v.index_select(0, rows) if v is not None else None) for k, v in getattr(L, a).items()})
             for a in ("is_conv_states_initialized", "is_recurrent_states_initialized", "has_previous_state", "conv_kernel_size"):
                 if hasattr(L, a):
                     setattr(M, a, dict(getattr(L, a)))
@@ -219,18 +232,32 @@ class Stream:
             new.layers.append(M)
         return new
 
+    def drop(self, keep):
+        """keep only stream rows `keep` (batched mode)"""
+        keep = torch.as_tensor(keep, device=self.dev)
+        for L in self.cache.layers:
+            if isinstance(getattr(L, "keys", None), torch.Tensor) and L.keys.numel():
+                L.keys = L.keys.index_select(0, keep); L.values = L.values.index_select(0, keep)
+            for a in ("conv_states", "recurrent_states"):
+                if hasattr(L, a):
+                    d = getattr(L, a)
+                    for k, v in d.items():
+                        if v is not None:
+                            d[k] = v.index_select(0, keep).contiguous()
+        self.B = len(keep)
+
     def question_ids(self, q, suffix=""):
         s = f"<|vision_end|>{q}{IM_END}\n{IM_START}assistant\n<think>\n\n</think>\n\n{suffix}"
         return self.tok.encode(s, add_special_tokens=False)
 
     @torch.no_grad()
-    def ask(self, questions, extra_embeds=None, answer_tokens=None, hidden_layers=None):
+    def ask(self, questions, extra_embeds=None, answer_tokens=None, hidden_layers=None, rows=None):
         """N question blocks forked from the current snapshot; nothing is written back.
         Returns dict(logits=(N,V) at the last question token, hidden={layer: (N, L_extra+1, D)} for readout heads)."""
         N = len(questions)
         ids = [self.question_ids(q) for q in questions]
         Lmax = max(map(len, ids))
-        cache = self.fork(N)
+        cache = self.fork(N, rows)
         E = torch.zeros(N, Lmax, self.cfg.text_config.hidden_size, device=self.dev, dtype=self.dtype)
         last = torch.tensor([len(x) - 1 for x in ids], device=self.dev)
         for i, x in enumerate(ids):
@@ -246,9 +273,9 @@ class Stream:
         return res
 
     @torch.no_grad()
-    def generate(self, question, max_new=16):
+    def generate(self, question, max_new=16, row=0):
         """greedy decode of one question from the snapshot (generative baseline; batch 1 so the GDN state never sees pads)"""
-        r = self.ask([question]); cache = r["cache"]
+        r = self.ask([question], rows=[row]); cache = r["cache"]
         p = self.pos + r["Lmax"]; nxt = r["logits"].argmax(-1); out = []
         eos = {self.tok.convert_tokens_to_ids(IM_END), self.tok.eos_token_id}
         for _ in range(max_new):
