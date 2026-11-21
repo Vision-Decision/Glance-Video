@@ -14,9 +14,10 @@ j test-split 8 - "GV_SPLIT=0 $Q tests.test_split $V/001YG.mp4"
 j cache256 0 - "$Q data.cache $GV/data 10 eval"
 j cache256-train 0 $C "$Q data.cache $GV/data 24 train"
 # lane T: smoke, then both S1 arms in parallel
-j s1-smoke 24 - "$Q train_s1 --out $O/p3/smoke --steps 20 --save 60 --workers 3 --batch 4"
-j s1a 28 glance-video-s1-smoke "$Q train_s1 --out $O/p3/s1a --steps 800 --workers 6"
-j s1b-lora16 30 glance-video-s1-smoke "$Q train_s1 --out $O/p3/s1b_lora16 --steps 800 --lora 16 --workers 6"
+# s1-smoke: 16/20 steps passed (losses fall, all four heads train); not re-queued
+# j s1-smoke 24 - "$Q train_s1 --out $O/p3/smoke --steps 20 --save 60 --workers 3 --batch 4"
+j s1a 20 - "$Q train_s1 --out $O/p3/s1a --steps 800 --workers 6"
+j s1b-lora16 22 - "$Q train_s1 --out $O/p3/s1b_lora16 --steps 800 --lora 16 --workers 6"
 # lane E1 (batched M6)
 chain $C \
   m6-presence-stream-fps2 12 "$Q evals.m6 --bench presence --arm stream --fps 2 --n 300 --out $O/m6/presence_stream_fps2.jsonl" \
@@ -35,7 +36,10 @@ chain $C \
   deploy-recent4-fps2 6 "$Q evals.deploy --split eval --fps 2 --arm recent4 --streams 12 --minutes 10 --rules 16 --layers '' --out $O/deploy" \
   probe-train-fps2 8 "$Q evals.deploy --split train --fps 2 --arm none --streams 40 --minutes 10 --out $O/deploy_train" \
   probe-train-fps30 10 "$Q evals.deploy --split train --fps 30 --arm none --streams 16 --minutes 10 --out $O/deploy_train"
-chain glance-video-probe-train-fps30,glance-video-s1a \
+chain glance-video-s1a \
   p3-s1a-fps2 16 "$Q evals.p3_eval --ckpt $O/p3/s1a/ckpt_final.pt --fps 2 --n 300 --out $O/p3/eval_s1a_fps2.jsonl" \
   p3-s1a-fps30 20 "$Q evals.p3_eval --ckpt $O/p3/s1a/ckpt_final.pt --fps 30 --n 300 --out $O/p3/eval_s1a_fps30.jsonl"
+chain glance-video-s1b-lora16 \
+  p3-s1b-fps2 16 "$Q evals.p3_eval --ckpt $O/p3/s1b_lora16/ckpt_final.pt --fps 2 --n 300 --out $O/p3/eval_s1b_fps2.jsonl" \
+  p3-s1b-fps30 20 "$Q evals.p3_eval --ckpt $O/p3/s1b_lora16/ckpt_final.pt --fps 30 --n 300 --out $O/p3/eval_s1b_fps30.jsonl"
 } > $HOME/glance-queue/glance-video.tsv.tmp && mv $HOME/glance-queue/glance-video.tsv.tmp $HOME/glance-queue/glance-video.tsv
