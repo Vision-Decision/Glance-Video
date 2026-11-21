@@ -29,6 +29,7 @@ ap.add_argument("--qbatch", type=int, default=8, help="question rows per forward
 ap.add_argument("--write_s", type=float, default=0.5, help="seconds of frames per stream write (KV is evicted per write)")
 a = ap.parse_args()
 os.makedirs(a.out, exist_ok=True)
+json.dump(vars(a), open(f"{a.out}/config.json", "w"), indent=1)
 torch.manual_seed(a.seed); random.seed(a.seed)
 fps_set = [(float(x.split(":")[0]), float(x.split(":")[1])) for x in a.fps.split(",")]
 
@@ -186,6 +187,8 @@ for batch in batches():
     if step % 25 == 0 or (step <= 50 and step % 5 == 0):
         rec = dict(step=step, t=round(time.time() - t0), lr=sched.get_last_lr()[0], **{k: float(np.mean(v)) for k, v in agg.items()})
         logf.write(json.dumps(rec) + "\n"); logf.flush(); print(rec, flush=True); agg = {}
+    if step % 200 == 0:  # intermediate weights (readout + LoRA only) for reproduction / learning curves
+        torch.save(dict(ro=ro.state_dict(), lora=[p.detach().cpu() for p in lora_params], step=step, args=vars(a)), f"{a.out}/ckpt_step{step}.pt")
     if time.time() - t_save > a.save:
         torch.save(state(), ck + ".tmp"); os.replace(ck + ".tmp", ck); t_save = time.time()
 

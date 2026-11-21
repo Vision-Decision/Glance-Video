@@ -3,6 +3,7 @@
 . $HOME/glance-video-exp/env.sh
 set -a; . $HOME/.hf.env; set +a
 while true; do
+  $PY -m video08.hf_manifest $GV/out $GV/data > /dev/null 2>&1
   $PY - <<'PYEOF'
 import os
 from huggingface_hub import HfApi
