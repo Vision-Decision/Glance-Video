@@ -51,7 +51,7 @@ class Readout(nn.Module):
         self.layers, self.S, self.B, self.C = tuple(layers), slots, bins, counts
         self.K = 1 + slots + 2
         mu, sd = emb_weight.float().mean(0), emb_weight.float().std(0)
-        self.latent = nn.Parameter((mu + sd * torch.randn(self.K, D)).to(emb_weight.device))
+        self.latent = nn.Parameter((mu + sd * torch.randn(self.K, D, device=emb_weight.device)).to(emb_weight.device))
         Din = D * len(self.layers)
         self.presence = mlp(Din, 1)
         self.slot = mlp(Din, 1 + 2 * bins)

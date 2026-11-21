@@ -14,16 +14,9 @@ j s1a 14 glance-video-s1-smoke "$Q train_s1 --out $O/p3/s1a --steps 4000"
 for b in presence sta; do for f in 2 30; do
   j m6-$b-stream-fps$f 6 glance-video-smoke "$Q evals.m6 --bench $b --arm stream --fps $f --n 300 --out $O/m6/${b}_stream_fps$f.jsonl"; done; done
 for f in 2 30; do j m6-pushup-stream-fps$f 6 glance-video-smoke "$Q evals.m6 --bench pushup --arm stream --fps $f --n 215 --out $O/m6/pushup_stream_fps$f.jsonl"; done
-for kv in layered short; do for f in 2 30; do
-  j m7-$kv-fps$f 6 glance-video-smoke "$Q evals.m7 --fps $f --kv $kv --trials 60 --out $O/m7/${kv}_fps$f.jsonl"; done; done
-j m7-full-fps2 8 glance-video-smoke "$Q evals.m7 --fps 2 --kv full --trials 60 --out $O/m7/full_fps2.jsonl"
+# M7 / M8 / throughput run on the Colab G4 (video08/run_g4.sh), not here
 for f in 2 30; do j deploy-stream-fps$f 8 glance-video-smoke "$Q evals.deploy --split eval --fps $f --arm stream --streams 12 --minutes 10 --rules 16 --out $O/deploy"; done
 j deploy-recent4-fps2 6 glance-video-smoke "$Q evals.deploy --split eval --fps 2 --arm recent4 --streams 12 --minutes 10 --rules 16 --layers '' --out $O/deploy"
-j throughput-fps30 8 glance-video-smoke "$Q evals.throughput --out $O/throughput/gen_fps30.json"
-j m8-long-fps30 8 glance-video-smoke "$Q evals.m8 --fps 30 --minutes 60 --arm long --out $O/m8/long_fps30.json"
-j m8-fresh-fps30 8 glance-video-smoke "$Q evals.m8 --fps 30 --minutes 60 --arm fresh --out $O/m8/fresh_fps30.json"
-j m8-long-fps2 6 glance-video-smoke "$Q evals.m8 --fps 2 --minutes 60 --arm long --out $O/m8/long_fps2.json"
-j m8-strict-fps30 6 glance-video-smoke "$Q evals.m8 --fps 30 --minutes 10 --chunk 1 --arm long --probe_every 60 --out $O/m8/strict_fps30_10min.json"
 j probe-train-fps2 8 glance-video-smoke "$Q evals.deploy --split train --fps 2 --arm none --streams 40 --minutes 10 --out $O/deploy_train"
 j probe-train-fps30 8 glance-video-smoke "$Q evals.deploy --split train --fps 30 --arm none --streams 16 --minutes 10 --out $O/deploy_train"
 j s1b-lora16 16 glance-video-s1-smoke "$Q train_s1 --out $O/p3/s1b_lora16 --steps 4000 --lora 16"
