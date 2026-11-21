@@ -67,10 +67,21 @@ for w in what:
         fetch("FudanCVL/MeViS", f"{RAW}/mevis", conns=24)
         subprocess.run(["unzip", "-q", "-o", f"{RAW}/mevis/MeViS_release.zip", "-d", f"{RAW}/mevis"], check=True)
     elif w == "lasot":  # subset of classes with natural-language target descriptions ("where is X now")
+        import shutil, zipfile
         for c in ("person", "car", "dog", "cup", "bicycle", "hand"):
+            if os.path.exists(f"{RAW}/lasot/{c}/.done"):
+                continue
+            free = shutil.disk_usage(RAW).free / 2**30
+            if free < 45:  # shared disk: keep >= 35 GB after this class (zip ~5 GB + 10 fps frames)
+                print("disk guard: stop LaSOT before", c, round(free), "GB free", flush=True); break
             big("l-lt/LaSOT", f"{c}.zip", f"{RAW}/lasot/{c}.zip", 16)
-            subprocess.run(["unzip", "-q", "-o", f"{RAW}/lasot/{c}.zip", "-d", f"{RAW}/lasot"], check=True)
+            with zipfile.ZipFile(f"{RAW}/lasot/{c}.zip") as z:  # annotations + every 3rd frame (30 -> 10 fps)
+                for n in z.namelist():
+                    b = os.path.basename(n)
+                    if b.endswith(".txt") or (b.endswith(".jpg") and int(os.path.splitext(b)[0]) % 3 == 1):
+                        z.extract(n, f"{RAW}/lasot")
             os.remove(f"{RAW}/lasot/{c}.zip")
+            os.makedirs(f"{RAW}/lasot/{c}", exist_ok=True); open(f"{RAW}/lasot/{c}/.done", "w").write("10fps")
         fetch("l-lt/LaSOT", f"{RAW}/lasot", allow=[".txt", "README.md"])
     elif w == "refcoco":  # annotations only; images = COCO train2014 already on the host
         fetch("jxu124/refcoco", f"{RAW}/refcoco")

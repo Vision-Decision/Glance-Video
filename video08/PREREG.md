@@ -31,7 +31,7 @@ LoRA 臂只有在 S1a 未达成功标准、或 S1b 相对 S1a 显著提升 ≥ 0
 
 ## B 组：视频框（2026-11-22 02:00 写，任何 B 组结果之前）
 
-数据：HC-STVG v2（train / test）、MeViS（mask 转逐帧框）、LaSOT 子集（person / car / dog / cup / bicycle / hand，带语言描述）、RefCOCO（单帧视频回放）。**VidSTG 不用**：它的视频来自 VidOR，而 VidOR 是 NExT-QA 的来源，NExT-QA 在 Video-Index 的来源列表里（`exclusions.json` 的 dataset_excluded）。Ref-YouTube-VOS 的表达式文件在国内镜像上没找到，先不做。
+数据：HC-STVG v2（train / test）、MeViS（mask 转逐帧框）、LaSOT 子集（person / car / dog / cup / bicycle / hand，带语言描述）、RefCOCO（单帧视频回放）。**VidSTG 不用**：它的视频来自 VidOR，而 VidOR 是 NExT-QA 的来源，NExT-QA 在 Video-Index 的来源列表里（`exclusions.json` 的 dataset_excluded）。Ref-YouTube-VOS 不用（表达式文件要在 CodaLab 注册并接受条款，已决定放弃）：指代表达只用 MeViS 和 LaSOT 的语言描述。LaSOT 只取 6 类、每 3 帧取 1 帧（10 fps），压缩包解压后即删。
 
 | 实验 | 主指标 | 成功 | 止损 |
 |---|---|---|---|
