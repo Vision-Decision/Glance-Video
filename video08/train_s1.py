@@ -86,7 +86,12 @@ stop = {"flag": False}
 for sg in (signal.SIGUSR1, signal.SIGTERM):
     signal.signal(sg, lambda *_: stop.__setitem__("flag", True))
 
-dl = torch.utils.data.DataLoader(DS(), batch_size=None, num_workers=a.workers, prefetch_factor=2, persistent_workers=True)
+def _winit(_):  # the queue stops a job with SIGTERM to its process group: workers ignore it, the main process saves
+    signal.signal(signal.SIGTERM, signal.SIG_IGN); signal.signal(signal.SIGUSR1, signal.SIG_IGN)
+
+
+dl = torch.utils.data.DataLoader(DS(), batch_size=None, num_workers=a.workers, prefetch_factor=2, persistent_workers=True,
+                                 worker_init_fn=_winit)
 logf = open(f"{a.out}/log.jsonl", "a")
 t_save = time.time(); t0 = time.time(); agg = {}
 
@@ -113,7 +118,15 @@ def losses(res, items):
     return L
 
 
-for batch in dl:
+def batches():
+    try:
+        for b in dl:
+            yield b
+    except Exception as e:  # a worker died (e.g. killed with the group): save and leave as interrupted
+        print("loader stopped:", repr(e)[:200], flush=True); stop["flag"] = True
+
+
+for batch in batches():
     if step >= a.steps or stop["flag"]:
         break
     rng = random.Random(batch["seed"]); r = batch["row"]; fps = batch["fps"]
