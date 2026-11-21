@@ -23,7 +23,25 @@ def cached(path, size=256):
     return c if os.path.exists(c) else path
 
 
+def frames_npy(path, fps, size=256):
+    """the decoded uint8 frame cache for this fps (data/cache.py npy part), if present"""
+    if size != 256 or "/raw/" not in path:
+        return None
+    c = os.path.splitext(path.replace("/raw/", f"/cache_fps{fps:g}/", 1))[0] + ".npy"
+    return c if os.path.exists(c) else None
+
+
 def decode(path, fps, size=256, t0=0.0, t1=None, threads=2):
+    c = frames_npy(path, fps, size)
+    if c is not None:  # zero-decode path
+        x = np.load(c, mmap_mode="r"); g = np.load(c[:-4] + ".t.npy")
+        m = (g >= t0 - 1e-6) & ((g < t1) if t1 is not None else True)
+        i = np.nonzero(m)[0]
+        return torch.from_numpy(np.ascontiguousarray(x[i[0]:i[-1] + 1])) if len(i) else torch.zeros(0, 3, size, size, dtype=torch.uint8), g[m]
+    return _decode(path, fps, size, t0, t1, threads)
+
+
+def _decode(path, fps, size=256, t0=0.0, t1=None, threads=2):
     """-> (frames uint8 (T,3,size,size) torch, times np.array): for each grid time k/fps in [t0, t1) the latest source
     frame shown at that time (frames repeat if the source is slower than fps). Frames are scaled by swscale on decode."""
     import av

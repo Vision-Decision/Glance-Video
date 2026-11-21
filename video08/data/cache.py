@@ -44,6 +44,24 @@ def one(p):
     return n
 
 
+def npy(args):
+    """uint8 frames on the k/fps grid (decoded from the 256 cache) -> DATA/cache_fps<f>/<rel>.npy + .t.npy"""
+    p, fps = args
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    from video08 import vio
+    import numpy as np
+    o = os.path.splitext(p.replace("/raw/", f"/cache_fps{fps:g}/", 1))[0] + ".npy"
+    if os.path.exists(o):
+        return 0
+    os.makedirs(os.path.dirname(o), exist_ok=True)
+    try:
+        x, t = vio._decode(vio.cached(p), fps, S, 0.0, 180.0, threads=1)
+        np.save(o[:-4] + ".tmp.npy", x.numpy()); np.save(o[:-4] + ".t.npy", t); os.replace(o[:-4] + ".tmp.npy", o)
+        return len(t)
+    except Exception as e:
+        print("npy fail", p, repr(e)[:200], flush=True); return 0
+
+
 if __name__ == "__main__":
     os.nice(10)
     idx = f"{R}/idx"; rows = {r["id"]: r for r in map(json.loads, open(f"{idx}/charades.jsonl"))}
@@ -65,4 +83,8 @@ if __name__ == "__main__":
             tot += n
             if i % 200 == 0:
                 print(i, len(paths), tot, "frames", round(tot / max(time.time() - t0, 1)), "fps", flush=True)
-    print("done", len(paths), tot)
+    print("done", len(paths), tot, flush=True)
+    if part == "eval":  # zero-decode frame cache for the fps-2 evaluation arms (small: ~20 GB)
+        with Pool(W) as pool:
+            n = sum(pool.imap(npy, [(p, 2.0) for p in paths], chunksize=4))
+        print("npy fps2 done", n, flush=True)
