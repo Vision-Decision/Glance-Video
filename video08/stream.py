@@ -71,6 +71,11 @@ class Stream:
         self.inv_freq = rot.inv_freq.float().to(self.dev)
         self.full_layers = [i for i, t in enumerate(self.cfg.text_config.layer_types) if t == "full_attention"]
         self.system = system
+        import os
+        self.split_ok = os.environ.get("GV_SPLIT", "1") == "1" and torch.cuda.is_available()
+        if self.split_ok:
+            from .attn import register
+            register()
         self.reset()
 
     # ------------------------------------------------------------------ state
@@ -92,9 +97,27 @@ class Stream:
 
     def _forward(self, embeds, pos3, cache=None, want_hidden=False):
         cache = self.cache if cache is None else cache
-        out = self.lm(inputs_embeds=embeds, position_ids=pos3, past_key_values=cache, use_cache=True,
-                      output_hidden_states=bool(self.readout_layers) or want_hidden)
+        with self.fast_attn():
+            out = self.lm(inputs_embeds=embeds, position_ids=pos3, past_key_values=cache, use_cache=True,
+                          output_hidden_states=bool(self.readout_layers) or want_hidden)
         return out
+
+    def fast_attn(self):
+        """no-grad paths (frame writes, generative asks) use the exact mask-free split attention: SDPA with a boolean
+        mask falls back to a slow kernel. Readouts that need gradients keep the model's own implementation."""
+        import contextlib
+        cfg = self.lm.config
+        if not self.split_ok or torch.is_grad_enabled():
+            return contextlib.nullcontext()
+
+        @contextlib.contextmanager
+        def ctx():
+            old = cfg._attn_implementation; cfg._attn_implementation = "split"
+            try:
+                yield
+            finally:
+                cfg._attn_implementation = old
+        return ctx()
 
     def _text(self, s, sink=False, t=-1.0):
         ids = torch.tensor([self.tok.encode(s, add_special_tokens=False)], device=self.dev)
@@ -267,8 +290,9 @@ class Stream:
         for i, x in enumerate(ids):
             E[i, : len(x)] = self.emb(torch.tensor(x, device=self.dev))  # right padding (after the real tokens: harmless)
         pos = torch.arange(self.pos, self.pos + Lmax, device=self.dev).view(1, 1, -1).expand(3, N, -1)
-        out = self.lm(inputs_embeds=E, position_ids=pos, past_key_values=cache, use_cache=True,
-                      output_hidden_states=hidden_layers is not None)
+        with self.fast_attn():
+            out = self.lm(inputs_embeds=E, position_ids=pos, past_key_values=cache, use_cache=True,
+                          output_hidden_states=hidden_layers is not None)
         h = out.last_hidden_state[torch.arange(N), last]
         logits = self.m.lm_head(h)
         res = dict(logits=logits.float(), cache=cache, last=last, Lmax=Lmax)
