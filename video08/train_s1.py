@@ -12,7 +12,7 @@ import torch
 import torch.nn.functional as F
 
 from video08.stream import Stream, load
-from video08 import vio, heads
+from video08 import vio, heads, feed
 from video08.tasks import Q
 
 ap = argparse.ArgumentParser()
@@ -23,6 +23,8 @@ ap.add_argument("--layers", default="12,24"); ap.add_argument("--slots", type=in
 ap.add_argument("--p_count", type=float, default=0.2); ap.add_argument("--times", type=int, default=3)
 ap.add_argument("--save", type=float, default=600); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--workers", type=int, default=6)
 ap.add_argument("--size", type=int, default=256)
+ap.add_argument("--batch", type=int, default=8, help="videos per step, streamed in lockstep (same fps)")
+ap.add_argument("--max_len", type=float, default=60.0)
 a = ap.parse_args()
 os.makedirs(a.out, exist_ok=True)
 torch.manual_seed(a.seed); random.seed(a.seed)
@@ -43,17 +45,19 @@ class DS(torch.utils.data.IterableDataset):
         wi = torch.utils.data.get_worker_info(); rng = random.Random(a.seed * 100003 + (wi.id if wi else 0) + int(time.time()))
         while True:
             fps = rng.choices([f for f, _ in fps_set], [w for _, w in fps_set])[0]
-            if rep and rng.random() < a.p_count:
-                r = rng.choice(rep); kind = "count"
-            else:
-                r = rows[rng.choice(train_ids)]; kind = "charades"
-            try:
-                fr, tt = vio.decode(r["path"], fps, a.size, 0.0, 120.0)
-            except Exception as e:
-                print("decode fail", r["path"], e, flush=True); continue
-            if len(fr) < 4:
-                continue
-            yield dict(kind=kind, row=r, fps=fps, frames=fr, times=tt, seed=rng.randrange(1 << 30))
+            vids = []
+            while len(vids) < a.batch:
+                if rep and rng.random() < a.p_count:
+                    r = rng.choice(rep); kind = "count"
+                else:
+                    r = rows[rng.choice(train_ids)]; kind = "charades"
+                try:
+                    fr, tt = vio.decode(r["path"], fps, a.size, 0.0, a.max_len)
+                except Exception as e:
+                    print("decode fail", r["path"], e, flush=True); continue
+                if len(fr) >= 4:
+                    vids.append(dict(kind=kind, row=r, frames=fr, times=tt, seed=rng.randrange(1 << 30)))
+            yield dict(fps=fps, vids=vids)
 
 
 model, tok = load()
@@ -129,43 +133,42 @@ def batches():
 for batch in batches():
     if step >= a.steps or stop["flag"]:
         break
-    rng = random.Random(batch["seed"]); r = batch["row"]; fps = batch["fps"]
-    fr, tt = batch["frames"], batch["times"]; dur = float(tt[-1])
-    qt = sorted(rng.uniform(min(2.0, dur), dur) for _ in range(a.times - 1)) + [dur]
-    st.reset(); heads.LORA["on"] = False
-    chunk = max(1, int(round(fps * 0.5))); qi = 0; total = 0.0; parts = {}
-    with torch.no_grad():
-        vis_all = []
-        for i0 in range(0, len(fr), 256):
-            v, grid = st.encode(vio.pairs(fr[i0:i0 + 256], fr[i0 - 1] if i0 else None)); vis_all.append(v)
-        vis = torch.cat(vis_all)
+    fps = batch["fps"]; V = batch["vids"]; chunk = max(1, int(round(fps * 0.5)))
+    plans = []
+    for v in V:
+        rng = random.Random(v["seed"]); dur = float(v["times"][-1])
+        qt = sorted(rng.uniform(min(2.0, dur), dur) for _ in range(a.times - 1)) + [dur]
+        plans.append(dict(rng=rng, qt=qt, qi=0))
+    heads.LORA["on"] = False; total = 0.0; parts = {}; nread = sum(len(p["qt"]) for p in plans)
     opt.zero_grad(set_to_none=True)
-    for b in range(0, len(tt), chunk):
-        ts = [float(x) for x in tt[b:b + chunk]]
-        with torch.no_grad():
-            heads.LORA["on"] = False; st.write(vis[b:b + chunk], ts, grid)
-        while qi < len(qt) and ts[-1] + 1e-6 >= qt[qi]:
-            t = ts[-1]; qi += 1
-            if batch["kind"] == "count":
-                items = qb.count(r, t, rng)
-            else:
-                items = qb.presence(r, t, rng) + qb.temporal(r, t, rng) + qb.choice(r, t, rng)
-            if not items:
-                continue
-            heads.LORA["on"] = bool(lora_params)
-            res = ro(st, [x["ids"] for x in items], [x.get("ends") for x in items])
-            heads.LORA["on"] = False
-            L = losses(res, items)
-            loss = sum(L.values()) / len(qt)
-            loss.backward(); total += float(loss)
-            for k, v in L.items():
-                parts[k] = parts.get(k, 0) + float(v)
+
+    def on_step(ts, active):
+        global total
+        t = ts[-1]
+        for r, i in enumerate(active):
+            P = plans[i]; v = V[i]
+            while P["qi"] < len(P["qt"]) and t + 1e-6 >= P["qt"][P["qi"]]:
+                P["qi"] += 1
+                items = qb.count(v["row"], t, P["rng"]) if v["kind"] == "count" else \
+                    qb.presence(v["row"], t, P["rng"]) + qb.temporal(v["row"], t, P["rng"]) + qb.choice(v["row"], t, P["rng"])
+                if not items:
+                    continue
+                heads.LORA["on"] = bool(lora_params)
+                res = ro(st, [x["ids"] for x in items], [x.get("ends") for x in items], rows=[r] * len(items))
+                heads.LORA["on"] = False
+                L = losses(res, items)
+                loss = sum(L.values()) / nread
+                loss.backward(); total += float(loss)
+                for k, x in L.items():
+                    parts[k] = parts.get(k, 0) + float(x) / nread
+
+    feed.feed_batch(st, [(v["frames"], v["times"]) for v in V], chunk, lambda i, r: None, on_step=on_step)
     torch.nn.utils.clip_grad_norm_([p for g in groups for p in g["params"]], 1.0)
     opt.step(); sched.step(); step += 1
     for k, v in parts.items():
-        agg.setdefault(k, []).append(v / len(qt))
+        agg.setdefault(k, []).append(v)
     agg.setdefault("loss", []).append(total); agg.setdefault("fps", []).append(fps)
-    if step % 25 == 0:
+    if step % 25 == 0 or (step <= 50 and step % 5 == 0):
         rec = dict(step=step, t=round(time.time() - t0), lr=sched.get_last_lr()[0], **{k: float(np.mean(v)) for k, v in agg.items()})
         logf.write(json.dumps(rec) + "\n"); logf.flush(); print(rec, flush=True); agg = {}
     if time.time() - t_save > a.save:
@@ -174,5 +177,5 @@ for batch in batches():
 torch.save(state(), ck + ".tmp"); os.replace(ck + ".tmp", ck)
 if step >= a.steps:
     torch.save(dict(ro=ro.state_dict(), lora=[p.detach().cpu() for p in lora_params], step=step, args=vars(a)), f"{a.out}/ckpt_final.pt")
-    print("final", step); sys.exit(0)
-print("stopped at", step); sys.exit(3)
+    print("final", step, flush=True); os._exit(0)
+print("stopped at", step, flush=True); os._exit(3)  # skip DataLoader teardown (it can hang with workers ignoring TERM)

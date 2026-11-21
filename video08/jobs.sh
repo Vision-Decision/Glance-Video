@@ -18,9 +18,9 @@ j m6-pushup-stream-fps2 6 glance-video-smoke "$Q evals.m6 --bench pushup --arm s
 j deploy-stream-fps2 8 glance-video-smoke "$Q evals.deploy --split eval --fps 2 --arm stream --streams 12 --minutes 10 --rules 16 --out $O/deploy"
 # lane T
 chain glance-video-prep-rep \
-  s1-smoke 10 "$Q train_s1 --out $O/p3/smoke --steps 30 --save 60 --workers 2" \
-  s1a 14 "$Q train_s1 --out $O/p3/s1a --steps 4000 --workers 4" \
-  s1b-lora16 16 "$Q train_s1 --out $O/p3/s1b_lora16 --steps 4000 --lora 16 --workers 4"
+  s1-smoke 10 "$Q train_s1 --out $O/p3/smoke --steps 20 --save 60 --workers 3 --batch 4" \
+  s1a 24 "$Q train_s1 --out $O/p3/s1a --steps 1500 --workers 6" \
+  s1b-lora16 26 "$Q train_s1 --out $O/p3/s1b_lora16 --steps 1500 --lora 16 --workers 6"
 # lane E (batched m6: GV_BATCH=8 lockstep streams per forward)
 chain glance-video-m6-presence-stream-fps2,glance-video-test-batch \
   m6-presence-stream-fps30 16 "$Q evals.m6 --bench presence --arm stream --fps 30 --n 300 --out $O/m6/presence_stream_fps30.jsonl" \
