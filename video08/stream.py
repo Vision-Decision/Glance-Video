@@ -174,8 +174,12 @@ class Stream:
         t = self.meta_t; now = self.now
         keep = (t < 0) | (t >= now - self.full_s)
         mid = (t >= now - self.sub_s) & (t < now - self.full_s)
-        on_grid = (torch.remainder(t * self.sub_fps + 1e-3, 1.0) < 2e-3 * max(1.0, self.sub_fps)) | (
-            torch.remainder(t * self.sub_fps, 1.0) > 1 - 1e-3)
+        # 4-60 s: keep the first group of every 1/sub_fps-second bin (independent of where the stream's grid starts;
+        # an on-grid test on absolute time silently kept nothing when concatenated clips shifted the grid)
+        b = torch.floor(t * self.sub_fps + 1e-6)
+        first = torch.full_like(t, float("inf")).scatter_reduce(0, (b - b.min()).long().clamp(min=0), t, "amin", include_self=True) \
+            if t.numel() else t
+        on_grid = t == first[(b - b.min()).long().clamp(min=0)]
         keep = keep | (mid & on_grid)
         if bool(keep.all()):
             return
