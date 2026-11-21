@@ -32,6 +32,9 @@ def window_attention(q, k, v, s):
 
 
 def split_attention(module, query, key, value, attention_mask, scaling=None, dropout=0.0, **kw):
+    if not getattr(module, "is_causal", True) or "cu_seqlens" in kw:  # the vision tower: bidirectional, packed
+        from transformers.integrations.sdpa_attention import sdpa_attention_forward
+        return sdpa_attention_forward(module, query, key, value, attention_mask, scaling=scaling, dropout=dropout, **kw)
     B, H, q, d = query.shape; KH = key.shape[1]; G = H // KH; n = key.shape[2]
     s = scaling if scaling is not None else d ** -0.5
     if q == 1 or n == q:  # decode step (sees everything) or no cache (pure causal)

@@ -4,7 +4,9 @@ export GV=/content/gv PYTHONPATH=/content/gv/code HF_HUB_DISABLE_PROGRESS_BARS=1
 cd $GV; mkdir -p logs out/m7 out/m8 out/throughput
 step() { echo "$(date +%H:%M:%S) $*" >> logs/progress.log; }
 step setup
+mkdir -p $HOME/glance-video-exp && ln -sfn $GV/data $HOME/glance-video-exp/data   # scripts default to ~/glance-video-exp/data
 pip -q install transformers==5.23.0 av flash-linear-attention > logs/pip.log 2>&1; step "pip rc=$?"
+timeout 1200 pip -q install causal-conv1d --no-build-isolation > logs/pip_cc.log 2>&1; step "causal_conv1d rc=$? $(python -c 'import causal_conv1d;print(causal_conv1d.__version__)' 2>&1 | tail -1)"
 python -c "from huggingface_hub import snapshot_download; snapshot_download('Qwen/Qwen3.5-0.8B')" > logs/model.log 2>&1; step "model rc=$?"
 if [ ! -f data/raw/charades/.done ]; then
   mkdir -p data/raw/charades

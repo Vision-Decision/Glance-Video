@@ -1,6 +1,6 @@
 """Video input: decode at a target fps (nearest source frame on the exact k/fps grid), resize to SxS, build the sliding
 tubelet pairs (frame at t - 1/fps, frame at t) that the stream writes as one group each."""
-import math
+import math, os
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -15,10 +15,19 @@ def probe(path):
         return fps, dur, s.codec_context.width, s.codec_context.height
 
 
-def decode(path, fps, size=256, t0=0.0, t1=None, threads=4):
+def cached(path, size=256):
+    """the once-decoded 256x256 copy from data/cache.py, if present (same timestamps)"""
+    if size != 256 or "/raw/" not in path:
+        return path
+    c = path.replace("/raw/", "/cache256/", 1)
+    return c if os.path.exists(c) else path
+
+
+def decode(path, fps, size=256, t0=0.0, t1=None, threads=2):
     """-> (frames uint8 (T,3,size,size) torch, times np.array): for each grid time k/fps in [t0, t1) the latest source
     frame shown at that time (frames repeat if the source is slower than fps). Frames are scaled by swscale on decode."""
     import av
+    path = cached(path, size)
     ts, imgs = [], []
     with av.open(path) as c:
         s = c.streams.video[0]; s.thread_type = "AUTO"; s.thread_count = threads
@@ -57,6 +66,7 @@ def resize(x, size, device=None):
 
 def pairs(frames, prev=None):
     """uint8 (T,3,S,S) -> float (T,2,3,S,S) in [0,1]: group k = (frame k-1, frame k); the first uses `prev` or itself"""
-    f = frames.float() / 255
-    p = torch.cat([(prev.float()[None] / 255) if prev is not None else f[:1], f[:-1]], 0)
+    dev = "cuda" if torch.cuda.is_available() else "cpu"  # convert on the GPU: no big CPU float tensors
+    f = frames.to(dev, non_blocking=True).float() / 255
+    p = torch.cat([(prev.to(dev).float()[None] / 255) if prev is not None else f[:1], f[:-1]], 0)
     return torch.stack([p, f], 1)
