@@ -52,6 +52,19 @@ for w in what:
         print("charades videos", ok, flush=True)
         if ok >= 9848:
             subprocess.run(["rm", "-rf", f"{RAW}/charades_zip"])
+    elif w == "hcstvg2":  # HC-STVG v2: videos + annos/{train,test}.json (14.6 GB copy; ModelScope's 115 GB zips not needed)
+        fetch("ShijianW01/hc-stvg2", f"{RAW}/hcstvg2", conns=8)
+    elif w == "mevis":
+        fetch("FudanCVL/MeViS", f"{RAW}/mevis", conns=24)
+        subprocess.run(["unzip", "-q", "-o", f"{RAW}/mevis/MeViS_release.zip", "-d", f"{RAW}/mevis"], check=True)
+    elif w == "lasot":  # subset of classes with natural-language target descriptions ("where is X now")
+        for c in ("person", "car", "dog", "cup", "bicycle", "hand"):
+            big("l-lt/LaSOT", f"{c}.zip", f"{RAW}/lasot/{c}.zip", 16)
+            subprocess.run(["unzip", "-q", "-o", f"{RAW}/lasot/{c}.zip", "-d", f"{RAW}/lasot"], check=True)
+            os.remove(f"{RAW}/lasot/{c}.zip")
+        fetch("l-lt/LaSOT", f"{RAW}/lasot", allow=[".txt", "README.md"])
+    elif w == "refcoco":  # annotations only; images = COCO train2014 already on the host
+        fetch("jxu124/refcoco", f"{RAW}/refcoco")
     elif w == "model":
         snapshot_download("Qwen/Qwen3.5-0.8B", endpoint=EP)
     os.makedirs(f"{RAW}/{w}", exist_ok=True); open(f"{RAW}/{w}/.done", "w").write("ok")
