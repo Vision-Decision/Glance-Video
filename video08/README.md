@@ -41,3 +41,9 @@ No Video-Index video or question is used for training, tuning, or sent to any ex
 | 进行中 | B0 数据：HC-STVG v2、MeViS、LaSOT 子集、RefCOCO 标注 | a100 CPU |
 | 约 10:00 后 | B1 框头（从头训 vs 图像 v1.4_D_0.8B 初始化），随后 B2、B3、B4 | a100 队列 |
 | S1 出结果后 | P4 设计（`P4_DESIGN.md`：写入门控 vs 加长 KV）和 R2 混合训练，等确认后开训 | — |
+
+### S1 白天续训和 P3 的硬件约定
+
+- 07:40 A100 让出时，队列给 S1a / S1b 发停止信号，两者存 `ckpt_last.pt` 后退出（exit 3）。07:41 起 Mac 上的 `handoff.sh` 把两个检查点（每个约 140 MB）拷到 Colab G4，`g4_day.sh` 用同样的参数从检查点续训到 1200 步，并在 A100 队列里把 S1 和 P3 评测标记为已转走，今晚不再重复跑。G4 上的 Charades train 视频和 RepCount-A 由 `g4_prep.sh` 预先从官方 S3 / HF 拉好。
+- **P3 的配对比较只在 G4 上做**：`evals/p3_eval.py` 在同一个进程、同一个流状态、同一组 token 上同时算头读出和生成式答案（含各自耗时），所以两边自然是同一硬件。A100 上不再跑 P3 评测。
+- VidSTG 只做评测（报告里的 m_vIoU），不进训练、不调参。
