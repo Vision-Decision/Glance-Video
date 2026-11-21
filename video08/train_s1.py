@@ -25,6 +25,7 @@ ap.add_argument("--save", type=float, default=600); ap.add_argument("--seed", ty
 ap.add_argument("--size", type=int, default=256)
 ap.add_argument("--batch", type=int, default=8, help="videos per step, streamed in lockstep (same fps)")
 ap.add_argument("--max_len", type=float, default=60.0)
+ap.add_argument("--qbatch", type=int, default=8, help="question rows per forward/backward")
 a = ap.parse_args()
 os.makedirs(a.out, exist_ok=True)
 torch.manual_seed(a.seed); random.seed(a.seed)
@@ -130,9 +131,11 @@ def batches():
         print("loader stopped:", repr(e)[:200], flush=True); stop["flag"] = True
 
 
+t_prev = time.time()
 for batch in batches():
     if step >= a.steps or stop["flag"]:
         break
+    t_got = time.time(); tread = [0.0]
     fps = batch["fps"]; V = batch["vids"]; chunk = max(1, int(round(fps * 0.5)))
     plans = []
     for v in V:
@@ -153,14 +156,22 @@ for batch in batches():
                     qb.presence(v["row"], t, P["rng"]) + qb.temporal(v["row"], t, P["rng"]) + qb.choice(v["row"], t, P["rng"])
                 if not items:
                     continue
-                heads.LORA["on"] = bool(lora_params)
-                res = ro(st, [x["ids"] for x in items], [x.get("ends") for x in items], rows=[r] * len(items))
-                heads.LORA["on"] = False
-                L = losses(res, items)
-                loss = sum(L.values()) / nread
-                loss.backward(); total += float(loss)
-                for k, x in L.items():
-                    parts[k] = parts.get(k, 0) + float(x) / nread
+                # questions in micro-batches: forward + backward each, so only one micro-batch of forked KV
+                # (and SDPA's GQA-expanded copy kept for backward) is alive at a time
+                mb = a.qbatch; tr0 = time.time()
+                for q0 in range(0, len(items), mb):
+                    sub = items[q0:q0 + mb]; w = len(sub) / len(items)
+                    heads.LORA["on"] = bool(lora_params)
+                    res = ro(st, [x["ids"] for x in sub], [x.get("ends") for x in sub], rows=[r] * len(sub))
+                    heads.LORA["on"] = False
+                    L = losses(res, sub)
+                    if not L:
+                        continue
+                    loss = sum(L.values()) * w / nread
+                    loss.backward(); total += float(loss)
+                    for k, x in L.items():
+                        parts[k] = parts.get(k, 0) + float(x) * w / nread
+                tread[0] += time.time() - tr0
 
     feed.feed_batch(st, [(v["frames"], v["times"]) for v in V], chunk, lambda i, r: None, on_step=on_step)
     torch.nn.utils.clip_grad_norm_([p for g in groups for p in g["params"]], 1.0)
@@ -168,6 +179,9 @@ for batch in batches():
     for k, v in parts.items():
         agg.setdefault(k, []).append(v)
     agg.setdefault("loss", []).append(total); agg.setdefault("fps", []).append(fps)
+    t_end = time.time()
+    agg.setdefault("s_wait", []).append(t_got - t_prev); agg.setdefault("s_read", []).append(tread[0])
+    agg.setdefault("s_stream", []).append(t_end - t_got - tread[0]); t_prev = t_end
     if step % 25 == 0 or (step <= 50 and step % 5 == 0):
         rec = dict(step=step, t=round(time.time() - t0), lr=sched.get_last_lr()[0], **{k: float(np.mean(v)) for k, v in agg.items()})
         logf.write(json.dumps(rec) + "\n"); logf.flush(); print(rec, flush=True); agg = {}

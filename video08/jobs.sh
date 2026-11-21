@@ -13,9 +13,9 @@ j upload 0 - "$GV/code/video08/upload_loop.sh"
 j cache256 0 - "$Q data.cache $GV/data 10 eval"
 j cache256-train 0 $C "$Q data.cache $GV/data 24 train"
 # lane T: smoke, then both S1 arms in parallel
-j s1-smoke 10 - "$Q train_s1 --out $O/p3/smoke --steps 20 --save 60 --workers 3 --batch 4"
-j s1a 24 glance-video-s1-smoke "$Q train_s1 --out $O/p3/s1a --steps 1500 --workers 6"
-j s1b-lora16 26 glance-video-s1-smoke "$Q train_s1 --out $O/p3/s1b_lora16 --steps 1500 --lora 16 --workers 6"
+j s1-smoke 24 - "$Q train_s1 --out $O/p3/smoke --steps 20 --save 60 --workers 3 --batch 4"
+j s1a 28 glance-video-s1-smoke "$Q train_s1 --out $O/p3/s1a --steps 1500 --workers 6"
+j s1b-lora16 30 glance-video-s1-smoke "$Q train_s1 --out $O/p3/s1b_lora16 --steps 1500 --lora 16 --workers 6"
 # lane E1 (batched M6)
 chain $C \
   m6-presence-stream-fps2 12 "$Q evals.m6 --bench presence --arm stream --fps 2 --n 300 --out $O/m6/presence_stream_fps2.jsonl" \
