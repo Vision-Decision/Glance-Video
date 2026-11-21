@@ -21,9 +21,14 @@ import torch.nn.functional as F
 IM_START, IM_END = "<|im_start|>", "<|im_end|>"
 
 
-def load(model_id="Qwen/Qwen3.5-0.8B", device="cuda", dtype=torch.bfloat16, attn="sdpa"):
+def load(model_id="Qwen/Qwen3.5-0.8B", device="cuda", dtype=torch.bfloat16, attn=None):
+    import os
+    attn = attn or os.environ.get("GV_ATTN", "sdpa")
     from transformers import AutoModelForImageTextToText, AutoTokenizer
     tok = AutoTokenizer.from_pretrained(model_id)
+    if attn == "split":
+        from .attn import register
+        register()
     model = AutoModelForImageTextToText.from_pretrained(model_id, dtype=dtype, attn_implementation=attn).to(device).eval()
     for p in model.parameters():
         p.requires_grad_(False)
