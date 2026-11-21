@@ -37,7 +37,7 @@ def decode(path, fps, size=256, t0=0.0, t1=None, threads=2):
         x = np.load(c, mmap_mode="r"); g = np.load(c[:-4] + ".t.npy")
         m = (g >= t0 - 1e-6) & ((g < t1) if t1 is not None else True)
         i = np.nonzero(m)[0]
-        return torch.from_numpy(np.ascontiguousarray(x[i[0]:i[-1] + 1])) if len(i) else torch.zeros(0, 3, size, size, dtype=torch.uint8), g[m]
+        return torch.from_numpy(np.array(x[i[0]:i[-1] + 1])) if len(i) else torch.zeros(0, 3, size, size, dtype=torch.uint8), g[m]
     return _decode(path, fps, size, t0, t1, threads)
 
 
