@@ -23,7 +23,7 @@ def feed(st, frames, times, chunk=1, t_offset=0.0, prev=None, cb=None, every=Non
         torch.cuda.synchronize() if torch.cuda.is_available() else None
         tm["vit"] += time.perf_counter() - t0
         for b in range(0, len(fr), chunk):
-            ts = [float(t_offset + x) for x in times[a + b:a + b + chunk]]
+            ts = [float(t_offset + x) for x in times[a + b:a + min(b + chunk, len(fr))]]
             t1 = time.perf_counter()
             f = st.write(vis[b:b + chunk], ts, grid, return_feats=feats)
             torch.cuda.synchronize() if torch.cuda.is_available() else None

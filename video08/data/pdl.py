@@ -14,18 +14,23 @@ def work():
                 return
             a, b = todo.pop(0)
         fn = f"{pd}/{a:015d}"
-        for k in range(20):
+        for k in range(200):
             have = os.path.getsize(fn) if os.path.exists(fn) else 0
             if have >= b - a + 1:
                 break
             try:
                 req = urllib.request.Request(url, headers={"Range": f"bytes={a + have}-{b}"})
-                with urllib.request.urlopen(req, timeout=60) as r, open(fn, "ab") as f:
+                with urllib.request.urlopen(req, timeout=15) as r, open(fn, "ab") as f:
+                    t0, got = time.time(), 0
                     while True:
                         x = r.read(1 << 20)
                         if not x:
                             break
-                        f.write(x)
+                        f.write(x); got += len(x)
+                        if time.time() - t0 > 10:  # a throttled connection: reconnect (fresh ones are fast)
+                            if got < (2 << 20):
+                                break
+                            t0, got = time.time(), 0
             except Exception as e:
                 time.sleep(3)
 
