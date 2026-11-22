@@ -1,3 +1,5 @@
+> **Moved (2026-11-22):** development continues in `Vision-Decision/glance-stream` (package `glance_stream`); this directory is kept as history only.
+
 # video08: Qwen3.5-0.8B streaming video decision experiments (P2 / P3)
 
 Frozen Qwen3.5-0.8B run as a stream: one forward per frame group (64 visual tokens, sliding 2-frame tubelet), bounded
