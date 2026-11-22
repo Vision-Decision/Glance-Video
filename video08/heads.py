@@ -30,6 +30,37 @@ class LoRALinear(nn.Module):
         return y
 
 
+def lora_modules(lm):
+    return [m for m in lm.modules() if isinstance(m, LoRALinear)]
+
+
+def set_lora(mods, params):
+    """point every LoRALinear at another adapter (params = [A0, B0, A1, B1, ...] in add_lora order): a free swap"""
+    for i, m in enumerate(mods):
+        m.A, m.B = params[2 * i], params[2 * i + 1]
+
+
+def sft_loss(st, model, tok, items, rows):
+    """generative SFT on the question block: rows = [question ids][answer ids, <|im_end|>]; CE on the answer tokens.
+    The forked stream state is read-only (no gradient into the video path)."""
+    from video08.tasks import answer_text
+    end = tok.convert_tokens_to_ids("<|im_end|>")
+    seqs = [(x["ids"], tok.encode(answer_text(x), add_special_tokens=False) + [end]) for x in items]
+    N = len(seqs); L = max(len(q) + len(y) for q, y in seqs); dev = st.dev
+    E = torch.zeros(N, L, st.emb.weight.shape[1], device=dev, dtype=st.dtype)
+    for i, (q, y) in enumerate(seqs):
+        E[i, : len(q) + len(y)] = st.emb(torch.tensor(q + y, device=dev))
+    cache = st.fork(N, rows)
+    pos = torch.arange(st.pos, st.pos + L, device=dev).view(1, 1, -1).expand(3, N, -1)
+    h = st.lm(inputs_embeds=E, position_ids=pos, past_key_values=cache, use_cache=True).last_hidden_state
+    bi, ti, tg = [], [], []
+    for i, (q, y) in enumerate(seqs):
+        for k, t in enumerate(y):
+            bi.append(i); ti.append(len(q) - 1 + k); tg.append(t)
+    logits = model.lm_head(h[torch.tensor(bi, device=dev), torch.tensor(ti, device=dev)]).float()
+    return F.cross_entropy(logits, torch.tensor(tg, device=dev))
+
+
 def add_lora(lm, r=16, alpha=32, targets=("q_proj", "k_proj", "v_proj", "o_proj", "in_proj_qkv", "in_proj_z", "out_proj",
                                           "gate_proj", "up_proj", "down_proj")):
     params = []

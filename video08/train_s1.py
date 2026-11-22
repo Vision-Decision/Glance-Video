@@ -26,6 +26,8 @@ ap.add_argument("--size", type=int, default=256)
 ap.add_argument("--batch", type=int, default=8, help="videos per step, streamed in lockstep (same fps)")
 ap.add_argument("--max_len", type=float, default=60.0)
 ap.add_argument("--qbatch", type=int, default=8, help="question rows per forward/backward")
+ap.add_argument("--gen_sft", type=int, default=0, help="1: generative SFT control (answers as text, same LoRA / data / steps, no heads)")
+ap.add_argument("--data_seed", type=int, default=-1, help=">=0: deterministic data order (default: time-seeded workers)")
 ap.add_argument("--write_s", type=float, default=0.5, help="seconds of frames per stream write (KV is evicted per write)")
 a = ap.parse_args()
 os.makedirs(a.out, exist_ok=True)
@@ -45,7 +47,7 @@ print("train videos: charades", len(train_ids), "repcount", len(rep), flush=True
 
 class DS(torch.utils.data.IterableDataset):
     def __iter__(self):
-        wi = torch.utils.data.get_worker_info(); rng = random.Random(a.seed * 100003 + (wi.id if wi else 0) + int(time.time()))
+        wi = torch.utils.data.get_worker_info(); rng = random.Random(a.seed * 100003 + (wi.id if wi else 0) + (int(time.time()) if a.data_seed < 0 else a.data_seed * 7))
         while True:
             fps = rng.choices([f for f, _ in fps_set], [w for _, w in fps_set])[0]
             vids = []
@@ -69,7 +71,7 @@ for p in model.parameters():
 lora_params = heads.add_lora(model.model.language_model, r=a.lora) if a.lora else []
 ro = heads.Readout(model.model.language_model.embed_tokens.weight, layers=[int(x) for x in a.layers.split(",")],
                    slots=a.slots, bins=a.bins).cuda()
-groups = [dict(params=list(ro.parameters()), lr=a.lr)] + ([dict(params=lora_params, lr=a.lora_lr)] if lora_params else [])
+groups = ([] if a.gen_sft else [dict(params=list(ro.parameters()), lr=a.lr)]) + ([dict(params=lora_params, lr=a.lora_lr)] if lora_params else [])
 opt = torch.optim.AdamW(groups, weight_decay=0.01)
 sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: min(1.0, (s + 1) / 200) * max(0.05, 0.5 * (1 + np.cos(np.pi * min(1.0, s / a.steps)))))
 st = Stream(model, tok)
@@ -164,9 +166,12 @@ for batch in batches():
                 for q0 in range(0, len(items), mb):
                     sub = items[q0:q0 + mb]; w = len(sub) / len(items)
                     heads.LORA["on"] = bool(lora_params)
-                    res = ro(st, [x["ids"] for x in sub], [x.get("ends") for x in sub], rows=[r] * len(sub))
+                    if a.gen_sft:
+                        L = {"sft": heads.sft_loss(st, model, tok, sub, [r] * len(sub))}
+                    else:
+                        res = ro(st, [x["ids"] for x in sub], [x.get("ends") for x in sub], rows=[r] * len(sub))
+                        L = losses(res, sub)
                     heads.LORA["on"] = False
-                    L = losses(res, sub)
                     if not L:
                         continue
                     loss = sum(L.values()) * w / nread

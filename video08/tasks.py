@@ -85,3 +85,19 @@ class Q:
         act = row["action"].replace("_", " ")
         return [dict(task="count", y=k, ids=self.ids(f"How many repetitions of '{act}' has the person completed so far? "
                                                      f"Answer with a single number."))]
+
+
+def answer_text(x):
+    """the generative-SFT target for an item (same items as the heads see)"""
+    if x["task"] == "presence":
+        return "Yes" if x["y"] else "No"
+    if x["task"] == "temporal":
+        if not x["segs"]:
+            return "none"
+        t = x["t"]
+        return ", ".join(f"<{s * t:.1f}-{e * t:.1f} seconds>" for s, e in x["segs"])
+    if x["task"] == "count":
+        return str(x["y"])
+    if x["task"] == "choice":
+        return "ABCD"[x["y"]]
+    raise ValueError(x["task"])
