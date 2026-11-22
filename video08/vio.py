@@ -77,6 +77,8 @@ def _decode(path, fps, size=256, t0=0.0, t1=None, threads=2):
     ts = np.array(ts); end = ts[-1] + (ts[-1] - ts[-2] if len(ts) > 1 else 1 / fps)
     hi = end if t1 is None else min(end, t1)
     grid = np.arange(math.ceil(t0 * fps - 1e-6), math.ceil(hi * fps - 1e-6)) / fps
+    if len(grid) == 0:
+        return torch.zeros(0, 3, H, W, dtype=torch.uint8), grid
     idx = np.clip(np.searchsorted(ts, grid + 1e-4, side="right") - 1, 0, len(ts) - 1)
     x = torch.from_numpy(np.stack([imgs[i] for i in idx])).permute(0, 3, 1, 2).contiguous()
     return x, grid

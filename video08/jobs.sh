@@ -28,22 +28,15 @@ chain $C \
   m6-sta-native-fps2 16 "$Q evals.m6 --bench sta --arm native --fps 2 --n 300 --out $O/m6/sta_native_fps2.jsonl" \
   m6-pushup-native-fps2 24 "$Q evals.m6 --bench pushup --arm native --fps 2 --n 215 --out $O/m6/pushup_native_fps2.jsonl" \
   m6-pushup-native-fps30 24 "$Q evals.m6 --bench pushup --arm native --fps 30 --n 215 --out $O/m6/pushup_native_fps30.jsonl"
+# R1 grid, 256x256 cells only (cached); the other resolutions / aspect ratios need the raw videos -> run on the G4.
 # lane E3: R1 zero-shot robustness grid (fps x tokens per group x aspect ratio); presence n=150, PushupBench n=100
 chain $C \
   r1-pres-f1-256 12 "$Q evals.m6 --bench presence --arm stream --fps 1 --n 150 --out $O/r1/presence_f1_256.jsonl" \
   r1-pres-f5-256 12 "$Q evals.m6 --bench presence --arm stream --fps 5 --n 150 --out $O/r1/presence_f5_256.jsonl" \
   r1-pres-f10-256 14 "$Q evals.m6 --bench presence --arm stream --fps 10 --n 150 --out $O/r1/presence_f10_256.jsonl" \
-  r1-pres-f2-128 10 "$Q evals.m6 --bench presence --arm stream --fps 2 --size 128 --n 150 --out $O/r1/presence_f2_128.jsonl" \
-  r1-pres-f2-512 16 "$Q evals.m6 --bench presence --arm stream --fps 2 --size 512 --n 150 --out $O/r1/presence_f2_512.jsonl" \
-  r1-pres-f30-128 14 "$Q evals.m6 --bench presence --arm stream --fps 30 --size 128 --n 150 --out $O/r1/presence_f30_128.jsonl" \
-  r1-pres-f30-512 24 "$Q evals.m6 --bench presence --arm stream --fps 30 --size 512 --n 150 --out $O/r1/presence_f30_512.jsonl" \
-  r1-pres-f2-352x192 12 "$Q evals.m6 --bench presence --arm stream --fps 2 --size 352x192 --n 150 --out $O/r1/presence_f2_352x192.jsonl" \
-  r1-pres-f2-192x352 12 "$Q evals.m6 --bench presence --arm stream --fps 2 --size 192x352 --n 150 --out $O/r1/presence_f2_192x352.jsonl" \
   r1-push-f1-256 12 "$Q evals.m6 --bench pushup --arm stream --fps 1 --n 100 --out $O/r1/pushup_f1_256.jsonl" \
   r1-push-f5-256 12 "$Q evals.m6 --bench pushup --arm stream --fps 5 --n 100 --out $O/r1/pushup_f5_256.jsonl" \
-  r1-push-f10-256 14 "$Q evals.m6 --bench pushup --arm stream --fps 10 --n 100 --out $O/r1/pushup_f10_256.jsonl" \
-  r1-push-f2-512 16 "$Q evals.m6 --bench pushup --arm stream --fps 2 --size 512 --n 100 --out $O/r1/pushup_f2_512.jsonl" \
-  r1-push-f2-352x192 12 "$Q evals.m6 --bench pushup --arm stream --fps 2 --size 352x192 --n 100 --out $O/r1/pushup_f2_352x192.jsonl"
+  r1-push-f10-256 14 "$Q evals.m6 --bench pushup --arm stream --fps 10 --n 100 --out $O/r1/pushup_f10_256.jsonl"
 # lane E2 (deployment protocol, probe features, then P3 eval once S1a is final)
 chain $C \
   deploy-stream-fps2 8 "$Q evals.deploy --split eval --fps 2 --arm stream --streams 12 --minutes 10 --rules 16 --out $O/deploy" \
